@@ -1,0 +1,6 @@
+node_modules/
+*.log
+data/db.json
+data/*.xlsx
+.npm/
+

@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>邀评管理系统</title>
+<style>
+* { margin:0; padding:0; box-sizing: border-box; }
+body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; height: 100vh; overflow: hidden; }
+
+.container { display: flex; height: 100vh; }
+
+/* ===== 左侧面板 ===== */
+.left-panel {
+  width: 370px; background: #fff; padding: 22px 18px;
+  box-shadow: 2px 0 12px rgba(0,0,0,0.08); overflow-y: auto;
+  flex-shrink: 0; display: flex; flex-direction: column; gap: 13px;
+}
+.left-panel h2 { font-size: 18px; color: #1a1a1a; border-bottom: 3px solid #1677ff; padding-bottom: 9px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group label { font-size: 13px; color: #555; font-weight: 500; }
+.form-group select,
+.form-group input {
+  padding: 9px 11px; border: 1.5px solid #d9d9d9; border-radius: 8px;
+  font-size: 14px; outline: none; transition: border-color .2s; font-family: inherit;
+}
+.form-group select:focus, .form-group input:focus { border-color: #1677ff; }
+
+.sku-selector { display: flex; flex-wrap: wrap; gap: 6px; }
+.sku-btn {
+  padding: 5px 13px; border: 1.5px solid #d9d9d9; border-radius: 18px;
+  background: #fafafa; font-size: 13px; cursor: pointer; transition: all .2s;
+  user-select: none; color: #333;
+}
+.sku-btn:hover { border-color: #1677ff; color: #1677ff; background: #e6f4ff; }
+.sku-btn.active { background: #1677ff; color: #fff; border-color: #1677ff; font-weight: 600; }
+
+.btn-add {
+  width: 100%; padding: 11px; margin-top: 4px;
+  background: linear-gradient(135deg, #1677ff, #4096ff); color: #fff;
+  border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: opacity .2s;
+}
+.btn-add:hover { opacity: .88; }
+
+/* ===== 右侧面板 ===== */
+.right-panel {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  background: #f0f2f5;
+}
+
+/* 顶部固定区 */
+.right-top-fixed {
+  flex-shrink: 0; background: #f0f2f5; z-index: 200;
+  padding: 22px 24px 0 24px;
+}
+.right-scroll-body {
+  flex: 1; overflow-y: auto; padding: 0 24px 24px 24px;
+}
+
+.right-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+.right-header h2 { font-size: 19px; color: #1a1a1a; }
+.stats { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.stat-badge {
+  background: #fff; padding: 5px 13px; border-radius: 18px;
+  font-size: 13px; color: #555; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.stat-badge b { color: #1677ff; font-size: 15px; }
+
+/* 店铺标签 sticky */
+.shop-tabs {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 150;
+  background: #f0f2f5; padding: 10px 0; margin-bottom: 2px;
+}
+.shop-tab {
+  padding: 7px 20px; border: 1.5px solid #d9d9d9; border-radius: 8px;
+  cursor: pointer; font-size: 14px; color: #555; background: #fff; transition: all .2s;
+}
+.shop-tab:hover { border-color: #1677ff; color: #1677ff; }
+.shop-tab.active { background: #1677ff; color: #fff; border-color: #1677ff; font-weight: 600; }
+
+/* 搜索 */
+.search-wrap { margin-bottom: 14px; }
+.search-wrap input {
+  width: 300px; max-width: 100%; padding: 9px 16px; border: 1.5px solid #d9d9d9;
+  border-radius: 22px; font-size: 14px; outline: none; transition: border-color .2s;
+}
+.search-wrap input:focus { border-color: #1677ff; }
+
+/* ===== SKU 分组区块 ===== */
+.sku-section {
+  background: #fff; border-radius: 12px; margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05); overflow: hidden;
+}
+
+/* SKU 表头 sticky */
+.sku-section-header {
+  font-size: 14px; font-weight: 700; color: #1677ff;
+  padding: 12px 18px;
+  position: sticky; top: 0; z-index: 100;
+  background: #fff;
+  border-bottom: 2px solid #f0f2f5;
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+/* 表格 - 统一列宽 */
+.sku-section table {
+  width: 100%; table-layout: fixed; border-collapse: collapse;
+  font-size: 13px;
+}
+/* 统一列宽定义 - 所有表格共享 */
+.sku-section table colgroup .col-cb    { width: 38px; }
+.sku-section table colgroup .col-oid   { width: 22%; }
+.sku-section table colgroup .col-date  { width: 14%; }
+.sku-section table colgroup .col-reason { width: 44%; }
+.sku-section table colgroup .col-action { width: 120px; }
+
+.sku-section thead { background: #1677ff; color: #fff; }
+.sku-section th {
+  padding: 9px 10px; text-align: left; font-weight: 600; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sku-section td {
+  padding: 8px 10px; border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle; color: #333;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.sku-section tbody tr:nth-child(even) { background: #fafafa; }
+.sku-section tbody tr:hover { background: #e6f4ff; }
+
+.checkbox-cell { text-align: center; }
+.action-cell { white-space: nowrap; }
+
+/* 按钮 */
+.btn-sm {
+  padding: 4px 10px; border: none; border-radius: 5px; font-size: 12px;
+  cursor: pointer; transition: opacity .2s; margin-right: 3px; color: #fff;
+}
+.btn-edit { background: #faad14; }
+.btn-del { background: #ff4d4f; }
+.btn-save { background: #52c41a; }
+.btn-cancel { background: #8c8c8c; }
+
+.btn-batch-del {
+  padding: 7px 16px; background: #ff4d4f; color: #fff; border: none;
+  border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+  display: none; transition: opacity .2s;
+}
+.btn-batch-del.show { display: inline-block; }
+.btn-batch-del:hover { opacity: .85; }
+
+/* 编辑状态 */
+.edit-input {
+  width: 100%; padding: 4px 7px; border: 1.5px solid #1677ff; border-radius: 4px;
+  font-size: 13px; font-family: inherit; outline: none;
+  box-sizing: border-box;
+}
+.edit-input:focus { box-shadow: 0 0 4px rgba(22,119,255,0.3); }
+
+.no-data { text-align: center; padding: 50px 20px; color: #bbb; font-size: 15px; }
+
+/* 弹框 */
+.modal-mask {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 9999; justify-content: center; align-items: center;
+}
+.modal-mask.show { display: flex; }
+.modal-box {
+  background: #fff; border-radius: 14px; padding: 26px 30px; max-width: 400px; width: 90%;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2); text-align: center;
+}
+.modal-box h3 { font-size: 17px; color: #1a1a1a; margin-bottom: 10px; }
+.modal-box p { font-size: 14px; color: #666; margin-bottom: 20px; line-height: 1.6; }
+.modal-actions { display: flex; gap: 12px; justify-content: center; }
+.modal-actions button {
+  padding: 8px 26px; border: none; border-radius: 8px; font-size: 14px;
+  font-weight: 600; cursor: pointer; transition: opacity .2s;
+}
+.modal-actions .btn-confirm { background: #ff4d4f; color: #fff; }
+.modal-actions .btn-cancel-m { background: #f0f0f0; color: #333; }
+.modal-actions button:hover { opacity: .82; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- 左侧录入 -->
+  <div class="left-panel">
+    <h2>📝 录入退货记录</h2>
+
+    <div class="form-group">
+      <label>店铺</label>
+      <select id="shopSelect">
+        <option value="哈德逊">哈德逊</option>
+        <option value="辰润">辰润</option>
+        <option value="多恩">多恩</option>
+        <option value="伯克纳">伯克纳</option>
+        <option value="阿达姆">阿达姆</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>SKU（点击选择）</label>
+      <div class="sku-selector" id="skuSelector"></div>
+    </div>
+
+    <div class="form-group">
+      <label>订单号</label>
+      <input type="text" id="orderIdInput" placeholder="自动去除首尾空格" />
+    </div>
+
+    <div class="form-group">
+      <label>日期（输入 6.1 或 2025.12.25）</label>
+      <input type="text" id="dateInput" placeholder="如 6.1 、 5.1-5.22" />
+    </div>
+
+    <div class="form-group">
+      <label>退货原因</label>
+      <input type="text" id="reasonInput" placeholder="输入退货原因" />
+    </div>
+
+    <button class="btn-add" onclick="addRecord()">➕ 添加记录</button>
+  </div>
+
+  <!-- 右侧列表 -->
+  <div class="right-panel">
+
+    <!-- 固定顶部：标题 + 统计 + 店铺标签 + 搜索 -->
+    <div class="right-top-fixed">
+      <div class="right-header">
+        <h2>📊 退货记录列表</h2>
+        <div class="stats">
+          <span class="stat-badge">店铺: <b id="statShop">-</b></span>
+          <span class="stat-badge">记录: <b id="statCount">0</b></span>
+          <button class="btn-batch-del" id="batchDelBtn" onclick="batchDelete()">🗑️ 批量删除</button>
+        </div>
+      </div>
+      <div class="shop-tabs" id="shopTabs"></div>
+      <div class="search-wrap">
+        <input type="text" id="searchInput" placeholder="🔍 搜索订单号…" oninput="renderList()" />
+      </div>
+    </div>
+
+    <!-- 可滚动主体 -->
+    <div class="right-scroll-body" id="listContainer"></div>
+  </div>
+</div>
+
+<!-- 删除确认弹框 -->
+<div class="modal-mask" id="delModal">
+  <div class="modal-box">
+    <h3>⚠️ 确认删除</h3>
+    <p id="delMsg">确定要删除这条记录吗？</p>
+    <div class="modal-actions">
+      <button class="btn-confirm" onclick="confirmDelete()">确定删除</button>
+      <button class="btn-cancel-m" onclick="closeDelModal()">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 日期解析 ==========
+function p2(s) { return s.length < 2 ? '0' + s : s; }
+
+function parseDateStr(text) {
+  if (!text) return null;
+  text = text.trim();
+  let main = text.split(/[-~～]/)[0].trim();
+  let m = main.match(/^(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})$/);
+  if (m) return `${m[1]}-${p2(m[2])}-${p2(m[3])}`;
+  m = main.match(/^(\d{1,2})[.\-](\d{1,2})$/);
+  if (m) {
+    let mo = parseInt(m[1], 10);
+    let yr = (mo === 12 || (mo >= 1 && mo <= 6)) ? (mo === 12 ? 2025 : 2026) : 2026;
+    return `${yr}-${p2(m[1])}-${p2(m[2])}`;
+  }
+  return null;
+}
+
+function isoToShort(iso) {
+  if (!iso) return '';
+  const p = iso.split('-');
+  return parseInt(p[1], 10) + '.' + parseInt(p[2], 10);
+}
+
+// ========== 状态 ==========
+let data = { records: {} };
+let currentShop = localStorage.getItem('yaoapp_lastShop') || '哈德逊';
+let currentSKU = '';
+let editingId  = null;
+let delTarget  = null;
+
+// ========== 初始化 ==========
+(async function init() {
+  await loadData();
+  document.getElementById('shopSelect').value = currentShop;
+  await tick();
+  renderList();
+})();
+
+async function loadData() {
+  const res = await fetch('/api/data');
+  data = await res.json();
+  ['哈德逊','辰润','多恩','伯克纳','阿达姆'].forEach(s => {
+    if (!data.records[s]) data.records[s] = [];
+  });
+}
+
+// ========== 店铺切换 ==========
+document.getElementById('shopSelect').addEventListener('change', async function() {
+  currentShop = this.value;
+  localStorage.setItem('yaoapp_lastShop', currentShop);
+  currentSKU = '';
+  await tick();
+  renderList();
+});
+
+function onShopTabClick(shop) {
+  currentShop = shop;
+  localStorage.setItem('yaoapp_lastShop', currentShop);
+  document.getElementById('shopSelect').value = shop;
+  currentSKU = '';
+  tick();
+  renderList();
+}
+
+// ========== SKU 按钮 ==========
+async function tick() {
+  buildShopTabs();
+  buildSkuButtons();
+}
+
+function buildShopTabs() {
+  const wrap = document.getElementById('shopTabs');
+  wrap.innerHTML = ['哈德逊','辰润','多恩','伯克纳','阿达姆'].map(s =>
+    `<div class="shop-tab${s===currentShop?' active':''}" onclick="onShopTabClick('${s}')">${s}</div>`
+  ).join('');
+}
+
+function buildSkuButtons() {
+  const records = data.records[currentShop] || [];
+  const map = {};
+  records.forEach(r => {
+    const sku = r.sku || currentShop;
+    map[sku] = (map[sku] || 0) + 1;
+  });
+  const skus = Object.keys(map);
+  if (!skus.includes(currentSKU) || !currentSKU) currentSKU = skus[0] || '';
+
+  const wrap = document.getElementById('skuSelector');
+  if (skus.length === 0) {
+    wrap.innerHTML = '<span style="color:#bbb;font-size:13px">暂无SKU，添加第一条记录后自动生成</span>';
+    return;
+  }
+  wrap.innerHTML = skus.map(s =>
+    `<span class="sku-btn${s===currentSKU?' active':''}" onclick="pickSKU('${esc(s)}')">${esc(s)}<small style="opacity:.6;margin-left:3px">(${map[s]})</small></span>`
+  ).join('');
+}
+
+function pickSKU(sku) {
+  currentSKU = sku;
+  buildSkuButtons();
+  const el = document.getElementById('sku-' + sku);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ========== 添加记录 ==========
+async function addRecord() {
+  const orderId = document.getElementById('orderIdInput').value.trim();
+  const dateStr  = document.getElementById('dateInput').value.trim();
+  const reason  = document.getElementById('reasonInput').value.trim();
+  if (!currentSKU)  { alert('请先选择SKU'); return; }
+  if (!orderId)     { alert('请输入订单号'); return; }
+  if (!dateStr)      { alert('请输入日期'); return; }
+  if (!reason)       { alert('请输入退货原因'); return; }
+
+  const iso = parseDateStr(dateStr);
+  const rec = {
+    id: Date.now() + Math.random(),
+    orderId,
+    dateRaw: dateStr,
+    dateISO: iso || '9999-12-31',
+    dateDisplay: iso ? isoToShort(iso) : dateStr,
+    reason,
+    shop: currentShop,
+    sku: currentSKU
+  };
+  data.records[currentShop].push(rec);
+  await saveData();
+  document.getElementById('orderIdInput').value = '';
+  document.getElementById('dateInput').value = '';
+  document.getElementById('reasonInput').value = '';
+  await tick();
+  renderList();
+}
+
+// ========== 渲染列表 ==========
+function renderList() {
+  const container = document.getElementById('listContainer');
+  let records = data.records[currentShop] || [];
+  document.getElementById('statShop').textContent  = currentShop;
+  document.getElementById('statCount').textContent = records.length;
+
+  const kw = document.getElementById('searchInput').value.trim().toLowerCase();
+  if (kw) records = records.filter(r => r.orderId.toLowerCase().includes(kw));
+
+  if (records.length === 0) {
+    container.innerHTML = '<div class="no-data">暂无数据</div>';
+    return;
+  }
+
+  // 按 SKU 分组，组内按 dateISO 排序
+  const groups = {};
+  records.forEach(r => {
+    const sku = r.sku || currentShop;
+    if (!groups[sku]) groups[sku] = [];
+    groups[sku].push(r);
+  });
+  Object.keys(groups).forEach(sku => {
+    groups[sku].sort((a, b) => (a.dateISO||'').localeCompare(b.dateISO||''));
+  });
+
+  // 统一列宽 colgroup
+  const colHTML = `<colgroup>
+    <col class="col-cb" />
+    <col class="col-oid" />
+    <col class="col-date" />
+    <col class="col-reason" />
+    <col class="col-action" />
+  </colgroup>`;
+
+  let html = '';
+  Object.keys(groups).forEach(sku => {
+    html += `<div class="sku-section" id="sku-${sku}">
+      <div class="sku-section-header">
+        <span>📦 ${esc(sku)}</span>
+        <span style="font-weight:400;font-size:12px;color:#999">${groups[sku].length} 条</span>
+      </div>
+      <table>
+        ${colHTML}
+        <thead><tr>
+          <th class="checkbox-cell"><input type="checkbox" onchange="toggleAll(this)"></th>
+          <th>订单号</th>
+          <th>日期</th>
+          <th>原因</th>
+          <th class="action-cell">操作</th>
+        </tr></thead>
+        <tbody>`;
+    groups[sku].forEach(r => {
+      if (editingId === r.id) {
+        html += `<tr style="background:#fffbe6">
+          <td class="checkbox-cell"></td>
+          <td><input class="edit-input" id="e_oid_${r.id}" value="${esc(r.orderId)}"></td>
+          <td><input class="edit-input" id="e_date_${r.id}" value="${esc(r.dateRaw||r.dateDisplay||r.date)}"></td>
+          <td><input class="edit-input" id="e_reason_${r.id}" value="${esc(r.reason)}"></td>
+          <td class="action-cell">
+            <button class="btn-sm btn-save" onclick="saveEdit(${r.id})">💾 保存</button>
+            <button class="btn-sm btn-cancel" onclick="cancelEdit()">取消</button>
+          </td>
+        </tr>`;
+      } else {
+        const displayDate = r.dateRaw || r.dateDisplay || r.date || '';
+        html += `<tr>
+          <td class="checkbox-cell"><input type="checkbox" class="cb" data-id="${r.id}" data-shop="${esc(r.shop)}"></td>
+          <td title="${esc(r.orderId)}">${esc(r.orderId)}</td>
+          <td>${esc(displayDate)}</td>
+          <td title="${esc(r.reason)}">${esc(r.reason)}</td>
+          <td class="action-cell">
+            <button class="btn-sm btn-edit" onclick="startEdit(${r.id})">✏️</button>
+            <button class="btn-sm btn-del" onclick="showDelModal(${r.id},'${esc(r.shop)}')">🗑️</button>
+          </td>
+        </tr>`;
+      }
+    });
+    html += '</tbody></table></div>';
+  });
+
+  container.innerHTML = html;
+  updateBatchBtn();
+}
+
+// ========== 编辑 ==========
+function startEdit(id) {
+  editingId = id;
+  renderList();
+  setTimeout(() => { const el = document.getElementById('e_oid_'+id); if(el) el.focus(); }, 60);
+}
+function cancelEdit() { editingId = null; renderList(); }
+
+async function saveEdit(id) {
+  const oid    = document.getElementById('e_oid_'+id).value.trim();
+  const dateT  = document.getElementById('e_date_'+id).value.trim();
+  const reason = document.getElementById('e_reason_'+id).value.trim();
+  if (!oid || !dateT || !reason) { alert('请填写完整'); return; }
+  const iso = parseDateStr(dateT);
+  for (const s of Object.keys(data.records)) {
+    const idx = data.records[s].findIndex(r => r.id === id);
+    if (idx !== -1) {
+      data.records[s][idx].orderId     = oid;
+      data.records[s][idx].dateRaw     = dateT;
+      data.records[s][idx].dateISO     = iso || '9999-12-31';
+      data.records[s][idx].dateDisplay = iso ? isoToShort(iso) : dateT;
+      data.records[s][idx].reason      = reason;
+      break;
+    }
+  }
+  await saveData();
+  editingId = null;
+  await tick();
+  renderList();
+}
+
+// ========== 删除 ==========
+function showDelModal(id, shop) {
+  delTarget = {id, shop};
+  document.getElementById('delMsg').textContent = '确定要删除这条记录吗？';
+  document.getElementById('delModal').classList.add('show');
+}
+function closeDelModal() {
+  document.getElementById('delModal').classList.remove('show');
+  delTarget = null;
+}
+async function confirmDelete() {
+  if (!delTarget) return;
+  const {id, shop} = delTarget;
+  data.records[shop] = data.records[shop].filter(r => r.id !== id);
+  await saveData();
+  await tick();
+  renderList();
+  closeDelModal();
+}
+
+// ========== 批量 ==========
+function toggleAll(cb) {
+  document.querySelectorAll('.cb').forEach(c => c.checked = cb.checked);
+  updateBatchBtn();
+}
+function updateBatchBtn() {
+  const n = document.querySelectorAll('.cb:checked').length;
+  const btn = document.getElementById('batchDelBtn');
+  if (n > 0) { btn.classList.add('show'); btn.textContent = `🗑️ 批量删除 (${n})`; }
+  else btn.classList.remove('show');
+}
+async function batchDelete() {
+  const cbs = document.querySelectorAll('.cb:checked');
+  if (!cbs.length) return;
+  if (!confirm(`确定删除选中的 ${cbs.length} 条记录？`)) return;
+  cbs.forEach(cb => {
+    const id = parseFloat(cb.dataset.id), shop = cb.dataset.shop;
+    data.records[shop] = data.records[shop].filter(r => r.id !== id);
+  });
+  await saveData();
+  await tick();
+  renderList();
+}
+
+// ========== 保存 ==========
+async function saveData() {
+  await fetch('/api/data', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  });
+}
+
+// ========== 工具 ==========
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.addEventListener('change', e => { if(e.target.classList.contains('cb')) updateBatchBtn(); });
+</script>
+</body>
+</html>
