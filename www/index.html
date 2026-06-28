@@ -35,6 +35,34 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
 .sku-btn:hover { border-color: #1677ff; color: #1677ff; background: #e6f4ff; }
 .sku-btn.active { background: #1677ff; color: #fff; border-color: #1677ff; font-weight: 600; }
 
+/* 新增SKU按钮 */
+.sku-add-btn {
+  padding: 5px 11px; border: 1.5px dashed #1677ff; border-radius: 18px;
+  background: #fff; font-size: 13px; cursor: pointer; transition: all .2s;
+  user-select: none; color: #1677ff; display: inline-flex; align-items: center; gap: 3px;
+}
+.sku-add-btn:hover { background: #e6f4ff; }
+
+/* 新增SKU输入区 */
+.sku-add-row {
+  display: none; align-items: center; gap: 6px; flex-wrap: nowrap; margin-top: 2px;
+}
+.sku-add-row.show { display: flex; }
+.sku-add-row input {
+  flex: 1; padding: 5px 10px; border: 1.5px solid #1677ff; border-radius: 8px;
+  font-size: 13px; outline: none; font-family: inherit; min-width: 0;
+}
+.sku-add-row .btn-ok {
+  padding: 5px 12px; background: #1677ff; color: #fff; border: none;
+  border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.sku-add-row .btn-ok:hover { opacity: .85; }
+.sku-add-row .btn-cancel-s {
+  padding: 5px 10px; background: #f0f0f0; color: #555; border: none;
+  border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.sku-add-row .btn-cancel-s:hover { background: #e0e0e0; }
+
 .btn-add {
   width: 100%; padding: 11px; margin-top: 4px;
   background: linear-gradient(135deg, #1677ff, #4096ff); color: #fff;
@@ -202,8 +230,14 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
     </div>
 
     <div class="form-group">
-      <label>SKU（点击选择）</label>
+      <label>SKU（点击选择，可新增）</label>
       <div class="sku-selector" id="skuSelector"></div>
+      <!-- 新增SKU输入行 -->
+      <div class="sku-add-row" id="skuAddRow">
+        <input type="text" id="skuAddInput" placeholder="输入新 SKU 名称" maxlength="40" />
+        <button class="btn-ok" onclick="confirmAddSku()">确认</button>
+        <button class="btn-cancel-s" onclick="cancelAddSku()">取消</button>
+      </div>
     </div>
 
     <div class="form-group">
@@ -286,7 +320,7 @@ function isoToShort(iso) {
 }
 
 // ========== 状态 ==========
-let data = { records: {} };
+let data = { records: {}, skuList: {} };
 let currentShop = localStorage.getItem('yaoapp_lastShop') || '哈德逊';
 let currentSKU = '';
 let editingId  = null;
@@ -306,6 +340,11 @@ async function loadData() {
   ['哈德逊','辰润','多恩','伯克纳','阿达姆'].forEach(s => {
     if (!data.records[s]) data.records[s] = [];
   });
+  // 兼容旧数据：确保 skuList 字段存在
+  if (!data.skuList) data.skuList = {};
+  ['哈德逊','辰润','多恩','伯克纳','阿达姆'].forEach(s => {
+    if (!data.skuList[s]) data.skuList[s] = [];
+  });
 }
 
 // ========== 店铺切换 ==========
@@ -313,6 +352,7 @@ document.getElementById('shopSelect').addEventListener('change', async function(
   currentShop = this.value;
   localStorage.setItem('yaoapp_lastShop', currentShop);
   currentSKU = '';
+  cancelAddSku();
   await tick();
   renderList();
 });
@@ -322,6 +362,7 @@ function onShopTabClick(shop) {
   localStorage.setItem('yaoapp_lastShop', currentShop);
   document.getElementById('shopSelect').value = shop;
   currentSKU = '';
+  cancelAddSku();
   tick();
   renderList();
 }
@@ -339,24 +380,45 @@ function buildShopTabs() {
   ).join('');
 }
 
+function getAllSkusForShop(shop) {
+  // 从记录里提取已有SKU
+  const records = data.records[shop] || [];
+  const fromRecords = {};
+  records.forEach(r => { const sku = r.sku || shop; fromRecords[sku] = true; });
+  // 合并手动添加的SKU列表（可能有0条记录的新SKU）
+  const fromList = (data.skuList[shop] || []);
+  const merged = { ...fromRecords };
+  fromList.forEach(s => { merged[s] = true; });
+  return Object.keys(merged);
+}
+
 function buildSkuButtons() {
   const records = data.records[currentShop] || [];
-  const map = {};
+  const countMap = {};
   records.forEach(r => {
     const sku = r.sku || currentShop;
-    map[sku] = (map[sku] || 0) + 1;
+    countMap[sku] = (countMap[sku] || 0) + 1;
   });
-  const skus = Object.keys(map);
+
+  const skus = getAllSkusForShop(currentShop);
+
+  // 如果当前选中的SKU不在列表里，自动选第一个
   if (!skus.includes(currentSKU) || !currentSKU) currentSKU = skus[0] || '';
 
   const wrap = document.getElementById('skuSelector');
+  let html = '';
   if (skus.length === 0) {
-    wrap.innerHTML = '<span style="color:#bbb;font-size:13px">暂无SKU，添加第一条记录后自动生成</span>';
-    return;
+    html = '<span style="color:#bbb;font-size:13px">暂无SKU</span>';
+  } else {
+    html = skus.map(s => {
+      const cnt = countMap[s] || 0;
+      const cntStr = cnt > 0 ? `<small style="opacity:.6;margin-left:3px">(${cnt})</small>` : '';
+      return `<span class="sku-btn${s===currentSKU?' active':''}" onclick="pickSKU('${esc(s)}')">${esc(s)}${cntStr}</span>`;
+    }).join('');
   }
-  wrap.innerHTML = skus.map(s =>
-    `<span class="sku-btn${s===currentSKU?' active':''}" onclick="pickSKU('${esc(s)}')">${esc(s)}<small style="opacity:.6;margin-left:3px">(${map[s]})</small></span>`
-  ).join('');
+  // 追加"+ 新增 SKU"按钮
+  html += `<span class="sku-add-btn" onclick="showAddSkuRow()">＋ 新增</span>`;
+  wrap.innerHTML = html;
 }
 
 function pickSKU(sku) {
@@ -366,12 +428,55 @@ function pickSKU(sku) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ========== 新增 SKU ==========
+function showAddSkuRow() {
+  const row = document.getElementById('skuAddRow');
+  row.classList.add('show');
+  const inp = document.getElementById('skuAddInput');
+  inp.value = '';
+  inp.focus();
+}
+
+function cancelAddSku() {
+  document.getElementById('skuAddRow').classList.remove('show');
+  document.getElementById('skuAddInput').value = '';
+}
+
+async function confirmAddSku() {
+  const val = document.getElementById('skuAddInput').value.trim();
+  if (!val) { alert('请输入 SKU 名称'); return; }
+
+  const existing = getAllSkusForShop(currentShop);
+  if (existing.includes(val)) {
+    alert(`"${val}" 已存在，直接点选即可`);
+    cancelAddSku();
+    currentSKU = val;
+    buildSkuButtons();
+    return;
+  }
+
+  // 加入 skuList 持久化
+  if (!data.skuList[currentShop]) data.skuList[currentShop] = [];
+  data.skuList[currentShop].push(val);
+  await saveData();
+
+  currentSKU = val;
+  cancelAddSku();
+  buildSkuButtons();
+}
+
+// 按 Enter 确认新增 SKU
+document.getElementById('skuAddInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') confirmAddSku();
+  if (e.key === 'Escape') cancelAddSku();
+});
+
 // ========== 添加记录 ==========
 async function addRecord() {
   const orderId = document.getElementById('orderIdInput').value.trim();
   const dateStr  = document.getElementById('dateInput').value.trim();
   const reason  = document.getElementById('reasonInput').value.trim();
-  if (!currentSKU)  { alert('请先选择SKU'); return; }
+  if (!currentSKU)  { alert('请先选择或新增一个SKU'); return; }
   if (!orderId)     { alert('请输入订单号'); return; }
   if (!dateStr)      { alert('请输入日期'); return; }
   if (!reason)       { alert('请输入退货原因'); return; }
