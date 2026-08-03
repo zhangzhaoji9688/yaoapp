@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB = '/opt/yaoapp/data/db.json';
+const DB = path.join(__dirname, 'data', 'db.json');
 
 function p2(s) { return s.length < 2 ? '0' + s : s; }
 

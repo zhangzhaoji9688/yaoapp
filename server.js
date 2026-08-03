@@ -1,9 +1,10 @@
 const http = require('http');
 const fs = require('fs');
 const url = require('url');
+const path = require('path');
 
 const PORT = 3000;
-const DB_FILE = '/opt/yaoapp/data/db.json';
+const DB_FILE = path.join(__dirname, 'data', 'db.json');
 
 function loadDB() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')); }
@@ -56,9 +57,9 @@ const server = http.createServer(async (req, res) => {
   // Static files
   let filePath;
   if (pathname === '/' || pathname === '/index.html') {
-    filePath = '/opt/yaoapp/www/index.html';
+    filePath = path.join(__dirname, 'www', 'index.html');
   } else {
-    filePath = '/opt/yaoapp/www' + pathname;
+    filePath = path.join(__dirname, 'www', pathname);
   }
 
   const ext = filePath.substring(filePath.lastIndexOf('.'));

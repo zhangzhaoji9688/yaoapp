@@ -1,7 +1,8 @@
 const XLSX = require('xlsx');
+const path = require('path');
 
 // 读取Excel文件
-const workbook = XLSX.readFile('/opt/yaoapp/data/test.xlsx');
+const workbook = XLSX.readFile(path.join(__dirname, 'data', 'test.xlsx'));
 
 // 打印每个sheet的前10行
 workbook.SheetNames.forEach(sheetName => {

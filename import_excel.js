@@ -1,8 +1,9 @@
 const XLSX = require('xlsx');
 const fs = require('fs');
+const path = require('path');
 
 // 读取Excel文件
-const workbook = XLSX.readFile('/opt/yaoapp/data/test.xlsx');
+const workbook = XLSX.readFile(path.join(__dirname, 'data', 'test.xlsx'));
 
 // 初始化数据结构
 const data = {
@@ -63,7 +64,7 @@ workbook.SheetNames.forEach(sheetName => {
 });
 
 // 保存为JSON文件
-fs.writeFileSync('/opt/yaoapp/data/db.json', JSON.stringify(data, null, 2), 'utf8');
+fs.writeFileSync(path.join(__dirname, 'data', 'db.json'), JSON.stringify(data, null, 2), 'utf8');
 console.log('数据导入完成！');
 const total = Object.values(data.records).reduce((sum, arr) => sum + arr.length, 0);
 console.log(`总记录数: ${total}`);
