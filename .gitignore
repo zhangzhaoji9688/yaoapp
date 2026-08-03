@@ -2,5 +2,8 @@ node_modules/
 *.log
 data/db.json
 data/*.xlsx
+data/app.db
+data/app.db-wal
+data/app.db-shm
 .npm/
 

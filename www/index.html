@@ -208,6 +208,30 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
 .modal-actions .btn-confirm { background: #ff4d4f; color: #fff; }
 .modal-actions .btn-cancel-m { background: #f0f0f0; color: #333; }
 .modal-actions button:hover { opacity: .82; }
+
+/* ===== 登录浮层 ===== */
+.login-mask { z-index: 100000; background: linear-gradient(135deg,#e6f4ff,#f0f2f5); }
+.login-box {
+  background: #fff; border-radius: 16px; padding: 34px 38px; width: 340px; max-width: 92%;
+  box-shadow: 0 14px 50px rgba(0,0,0,0.18); text-align: left;
+}
+.login-box h2 { font-size: 20px; color:#1a1a1a; margin-bottom: 22px; text-align:center; }
+.login-box .form-group { margin-bottom: 14px; }
+.login-box .form-group input {
+  width: 100%; padding: 10px 12px; border: 1.5px solid #d9d9d9; border-radius: 8px;
+  font-size: 14px; outline: none; font-family: inherit; box-sizing: border-box;
+}
+.login-box .form-group input:focus { border-color: #1677ff; }
+.login-box .remember { display:flex; align-items:center; gap:6px; font-size:13px; color:#555; margin: 4px 2px 14px; cursor:pointer; }
+.login-err { color:#ff4d4f; font-size:13px; min-height:18px; margin-bottom:8px; text-align:center; }
+.login-switch { text-align:center; font-size:13px; color:#888; margin-top:14px; }
+.login-switch a { color:#1677ff; text-decoration:none; cursor:pointer; }
+.login-switch a:hover { text-decoration: underline; }
+.btn-top {
+  padding: 6px 13px; border: 1.5px solid #d9d9d9; background:#fff; color:#555;
+  border-radius: 8px; font-size: 13px; cursor: pointer; transition: all .2s;
+}
+.btn-top:hover { border-color:#1677ff; color:#1677ff; }
 </style>
 </head>
 <body>
@@ -269,6 +293,8 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
           <span class="stat-badge">店铺: <b id="statShop">-</b></span>
           <span class="stat-badge">记录: <b id="statCount">0</b></span>
           <button class="btn-batch-del" id="batchDelBtn" onclick="batchDelete()">🗑️ 批量删除</button>
+          <button class="btn-top" id="changePwBtn" onclick="showChangePw()">🔑 改密</button>
+          <button class="btn-top" id="logoutBtn" onclick="doLogout()">退出</button>
         </div>
       </div>
       <div class="shop-tabs" id="shopTabs"></div>
@@ -290,6 +316,44 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
     <div class="modal-actions">
       <button class="btn-confirm" onclick="confirmDelete()">确定删除</button>
       <button class="btn-cancel-m" onclick="closeDelModal()">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 登录浮层 -->
+<div class="modal-mask login-mask" id="loginMask">
+  <div class="login-box">
+    <h2 id="loginTitle">🔐 邀评系统登录</h2>
+    <div class="form-group">
+      <label>账号</label>
+      <input type="text" id="loginUser" placeholder="用户名" autocomplete="username" />
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="loginPass" placeholder="密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()" />
+    </div>
+    <label class="remember"><input type="checkbox" id="loginRemember" checked /> 记住我（自动登录）</label>
+    <div class="login-err" id="loginErr"></div>
+    <button class="btn-add" id="loginSubmit" onclick="submitAuth()">登录</button>
+    <div class="login-switch">
+      <span id="loginSwitchText">还没有账号？</span>
+      <a id="loginSwitchLink" onclick="toggleAuthMode()">注册新账号</a>
+    </div>
+  </div>
+</div>
+
+<!-- 修改密码弹框 -->
+<div class="modal-mask" id="pwModal">
+  <div class="modal-box">
+    <h3>🔑 修改密码</h3>
+    <div class="form-group" style="text-align:left;margin-bottom:12px">
+      <label>新密码（至少4位）</label>
+      <input type="password" id="newPwInput" placeholder="输入新密码" />
+    </div>
+    <div class="login-err" id="pwErr"></div>
+    <div class="modal-actions">
+      <button class="btn-confirm" style="background:#1677ff" onclick="submitChangePw()">确定</button>
+      <button class="btn-cancel-m" onclick="closePw()">取消</button>
     </div>
   </div>
 </div>
@@ -326,16 +390,35 @@ let currentSKU = '';
 let editingId  = null;
 let delTarget  = null;
 
-// ========== 初始化 ==========
+// ========== 初始化（先鉴权，自动登录） ==========
 (async function init() {
+  await bootAuth();
+})();
+
+async function bootAuth() {
+  const token = getStoredToken();
+  if (token) {
+    try {
+      const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (res.ok) { await enterApp(); return; }
+    } catch (e) {}
+  }
+  const savedUser = localStorage.getItem('yaoapp_user');
+  if (savedUser) document.getElementById('loginUser').value = savedUser;
+  document.getElementById('loginRemember').checked = !!localStorage.getItem('yaoapp_token');
+  showLogin();
+}
+
+async function enterApp() {
+  showApp();
   await loadData();
   document.getElementById('shopSelect').value = currentShop;
   await tick();
   renderList();
-})();
+}
 
 async function loadData() {
-  const res = await fetch('/api/data');
+  const res = await apiFetch('/api/data');
   data = await res.json();
   ['哈德逊','辰润','多恩','伯克纳','阿达姆'].forEach(s => {
     if (!data.records[s]) data.records[s] = [];
@@ -663,7 +746,7 @@ async function batchDelete() {
 
 // ========== 保存 ==========
 async function saveData() {
-  await fetch('/api/data', {
+  await apiFetch('/api/data', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
@@ -674,6 +757,96 @@ async function saveData() {
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ========== 登录 / 鉴权 ==========
+let authMode = 'login'; // login | register
+
+function getStoredToken() {
+  return localStorage.getItem('yaoapp_token') || sessionStorage.getItem('yaoapp_token');
+}
+function storeToken(token, remember, username) {
+  if (remember) {
+    localStorage.setItem('yaoapp_token', token);
+    if (username) localStorage.setItem('yaoapp_user', username);
+  } else {
+    sessionStorage.setItem('yaoapp_token', token);
+  }
+}
+function showLogin() { document.getElementById('loginMask').classList.add('show'); }
+function showApp() {
+  document.getElementById('loginMask').classList.remove('show');
+  document.getElementById('loginErr').textContent = '';
+}
+function setLoginErr(msg) { document.getElementById('loginErr').textContent = msg || ''; }
+
+// 带 token 的请求封装；401 自动跳登录
+async function apiFetch(url, options = {}) {
+  const token = getStoredToken();
+  options.headers = Object.assign({}, options.headers, token ? { 'Authorization': 'Bearer ' + token } : {});
+  const res = await fetch(url, options);
+  if (res.status === 401) { showLogin(); throw new Error('unauthorized'); }
+  return res;
+}
+
+function toggleAuthMode() {
+  authMode = (authMode === 'login') ? 'register' : 'login';
+  const reg = authMode === 'register';
+  document.getElementById('loginTitle').textContent = reg ? '📝 注册新账号' : '🔐 邀评系统登录';
+  document.getElementById('loginSubmit').textContent = reg ? '注册' : '登录';
+  document.getElementById('loginSwitchText').textContent = reg ? '已有账号？' : '还没有账号？';
+  document.getElementById('loginSwitchLink').textContent = reg ? '去登录' : '注册新账号';
+  setLoginErr('');
+}
+
+async function submitAuth() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const remember = document.getElementById('loginRemember').checked;
+  if (!username || !password) { setLoginErr('请输入账号和密码'); return; }
+
+  const url = authMode === 'register' ? '/api/register' : '/api/login';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    setLoginErr(j.error || '操作失败');
+    return;
+  }
+  const j = await res.json();
+  storeToken(j.token, remember, username);
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  await enterApp();
+}
+
+function doLogout() {
+  const token = getStoredToken();
+  if (token) fetch('/api/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }).catch(() => {});
+  localStorage.removeItem('yaoapp_token');
+  localStorage.removeItem('yaoapp_user');
+  sessionStorage.removeItem('yaoapp_token');
+  document.getElementById('loginUser').value = localStorage.getItem('yaoapp_user') || '';
+  showLogin();
+}
+
+// 修改密码
+function showChangePw() {
+  document.getElementById('newPwInput').value = '';
+  document.getElementById('pwErr').textContent = '';
+  document.getElementById('pwModal').classList.add('show');
+}
+function closePw() { document.getElementById('pwModal').classList.remove('show'); }
+async function submitChangePw() {
+  const pw = document.getElementById('newPwInput').value;
+  const res = await apiFetch('/api/change-password', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw })
+  });
+  if (res.ok) { alert('密码已修改'); closePw(); }
+  else { const j = await res.json().catch(() => ({})); document.getElementById('pwErr').textContent = j.error || '失败'; }
 }
 
 document.addEventListener('change', e => { if(e.target.classList.contains('cb')) updateBatchBtn(); });
