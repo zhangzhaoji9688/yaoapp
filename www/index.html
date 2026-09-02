@@ -712,8 +712,15 @@ function closeDelModal() {
 }
 async function confirmDelete() {
   if (!delTarget) return;
-  const {id, shop} = delTarget;
-  data.records[shop] = data.records[shop].filter(r => r.id !== id);
+  const {id} = delTarget;
+  // 全局按 id 定位删除（不依赖 shop 字段，避免脏数据导致删不掉）
+  let removed = 0;
+  for (const s of Object.keys(data.records)) {
+    const before = data.records[s].length;
+    data.records[s] = data.records[s].filter(r => r.id !== id);
+    removed += before - data.records[s].length;
+  }
+  if (removed === 0) { alert('未找到该记录，可能已被删除'); closeDelModal(); return; }
   await saveData();
   await tick();
   renderList();
@@ -735,10 +742,11 @@ async function batchDelete() {
   const cbs = document.querySelectorAll('.cb:checked');
   if (!cbs.length) return;
   if (!confirm(`确定删除选中的 ${cbs.length} 条记录？`)) return;
-  cbs.forEach(cb => {
-    const id = parseFloat(cb.dataset.id), shop = cb.dataset.shop;
-    data.records[shop] = data.records[shop].filter(r => r.id !== id);
-  });
+  const ids = new Set([...cbs].map(cb => parseFloat(cb.dataset.id)));
+  // 全局按 id 定位删除（不依赖 shop 字段）
+  for (const s of Object.keys(data.records)) {
+    data.records[s] = data.records[s].filter(r => !ids.has(r.id));
+  }
   await saveData();
   await tick();
   renderList();
