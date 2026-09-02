@@ -300,7 +300,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
       </div>
       <div class="shop-tabs" id="shopTabs"></div>
       <div class="search-wrap">
-        <input type="text" id="searchInput" placeholder="🔍 搜索订单号…" autocomplete="off" oninput="renderList()" />
+        <input type="text" id="searchInput" name="query_box" placeholder="🔍 搜索订单号…" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" oninput="renderList()" />
       </div>
     </div>
 
@@ -340,11 +340,11 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
       <h2 id="loginTitle">🔐 邀评系统登录</h2>
       <div class="form-group">
         <label>账号</label>
-        <input type="text" id="loginUser" placeholder="用户名" autocomplete="username" />
+        <input type="text" id="loginUser" name="account_id" placeholder="用户名" autocomplete="off" autocapitalize="off" spellcheck="false" />
       </div>
       <div class="form-group">
         <label>密码</label>
-        <input type="password" id="loginPass" placeholder="密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()" />
+        <input type="password" id="loginPass" name="secret_key" placeholder="密码" autocomplete="off" onkeydown="if(event.key==='Enter')submitAuth()" />
       </div>
       <label class="remember"><input type="checkbox" id="loginRemember" checked /> 记住我（自动登录）</label>
       <div class="login-err" id="loginErr"></div>
@@ -362,11 +362,11 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
       <p class="pw-tip">忘记旧密码请联系管理员</p>
       <div class="form-group">
         <label>账号</label>
-        <input type="text" id="pwUser" placeholder="用户名" autocomplete="username" />
+        <input type="text" id="pwUser" name="account_id2" placeholder="用户名" autocomplete="off" />
       </div>
       <div class="form-group">
         <label>旧密码</label>
-        <input type="password" id="pwOld" placeholder="输入当前密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitPwView()" />
+        <input type="password" id="pwOld" name="secret_key2" placeholder="输入当前密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPwView()" />
       </div>
       <div class="form-group">
         <label>新密码（至少4位）</label>
@@ -386,7 +386,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
     <p class="pw-tip">忘记旧密码请联系管理员</p>
     <div class="form-group" style="text-align:left;margin-bottom:12px">
       <label>旧密码</label>
-      <input type="password" id="oldPwInput" placeholder="输入当前密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitChangePw()" />
+      <input type="password" id="oldPwInput" name="secret_key3" placeholder="输入当前密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitChangePw()" />
     </div>
     <div class="form-group" style="text-align:left;margin-bottom:12px">
       <label>新密码（至少4位）</label>
@@ -484,16 +484,28 @@ async function enterApp() {
   document.getElementById('shopSelect').value = currentShop;
   await tick();
   renderList();
-  // 兜底：Chrome 自动填充可能晚于页面加载，登录后清空业务输入框，避免误填 admin
-  const clearBizInputs = () => {
-    ['searchInput','orderIdInput','dateInput','reasonInput','skuAddInput'].forEach(id => {
+  // ===== 防 Chrome 自动填充（三层） =====
+  // 1) 清空登录框自身，防止凭据残留
+  ['loginUser','loginPass'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  // 2) 看门狗：登录后 15 秒内每 300ms 检查业务输入框，一旦被填入当前用户名立即清空。
+  //    Chrome 可能在登录成功检测后延迟几秒才填充，一次性 setTimeout 挡不住。
+  const bizIds = ['searchInput','orderIdInput','dateInput','reasonInput','skuAddInput'];
+  const knownNames = new Set(
+    ['admin', localStorage.getItem('yaoapp_user')]
+      .filter(Boolean)
+      .map(s => String(s).trim().toLowerCase())
+  );
+  let guardTick = 0;
+  const guard = setInterval(() => {
+    guardTick++;
+    bizIds.forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.value = '';
+      if (!el) return;
+      const v = el.value.trim().toLowerCase();
+      if (v && knownNames.has(v)) el.value = '';
     });
-  };
-  clearBizInputs();
-  setTimeout(clearBizInputs, 300);
-  setTimeout(clearBizInputs, 1000);
+    if (guardTick > 50) clearInterval(guard); // 15 秒后停止监控
+  }, 300);
 }
 
 async function loadData() {
