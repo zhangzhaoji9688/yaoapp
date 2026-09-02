@@ -68,8 +68,33 @@ const server = http.createServer(async (req, res) => {
     const body = await parseJSON(req);
     const user = body && store.verifyUser(body.username, body.password);
     if (!user) return sendJSON(res, 401, { error: '账号或密码错误' });
+    store.touchLogin(user.id);
     const token = store.createSession(user.id);
     return sendJSON(res, 200, { ok: true, token, username: user.username });
+  }
+
+  // ========== 管理员：全部账号信息（仅 admin） ==========
+  if (pathname === '/api/admin/users' && req.method === 'GET') {
+    const user = store.getSessionUser(getToken(req));
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (user.username !== 'admin') return sendJSON(res, 403, { error: '无权限' });
+    return sendJSON(res, 200, { ok: true, users: store.listUsers() });
+  }
+
+  // ========== 管理员：重置他人密码（仅 admin，无需旧密码） ==========
+  if (pathname === '/api/admin/reset-password' && req.method === 'POST') {
+    const user = store.getSessionUser(getToken(req));
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (user.username !== 'admin') return sendJSON(res, 403, { error: '无权限' });
+    const body = await parseJSON(req);
+    if (!body || !body.username || !body.newPassword || body.newPassword.length < 4) {
+      return sendJSON(res, 400, { error: '用户名和新密码（至少4位）必填' });
+    }
+    const target = store.findUserByUsername(body.username);
+    if (!target) return sendJSON(res, 404, { error: '用户不存在' });
+    store.changePassword(target.id, body.newPassword);
+    store.deleteUserSessions(target.id); // 踢下线，强制重新登录
+    return sendJSON(res, 200, { ok: true, username: body.username });
   }
 
   // ========== 当前用户 ==========

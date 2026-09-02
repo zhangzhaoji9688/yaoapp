@@ -233,6 +233,13 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
 }
 .btn-top:hover { border-color:#1677ff; color:#1677ff; }
 .pw-tip { font-size: 12px; color: #999; text-align: left; margin-bottom: 12px; line-height: 1.5; }
+.admin-table { width:100%; border-collapse:collapse; font-size:13px; }
+.admin-table th, .admin-table td { border:1px solid #e5e5e5; padding:6px 10px; text-align:left; }
+.admin-table th { background:#f5f7fa; color:#333; font-weight:600; white-space:nowrap; }
+.admin-table td { color:#444; word-break:break-all; }
+.admin-table .btn-reset { border:1px solid #e6a23c; color:#e6a23c; background:#fff; border-radius:4px; padding:2px 10px; cursor:pointer; font-size:12px; }
+.admin-table .btn-reset:hover { background:#e6a23c; color:#fff; }
+.admin-table .me { color:#1677ff; font-size:11px; margin-left:4px; }
 </style>
 </head>
 <body>
@@ -294,6 +301,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
           <span class="stat-badge">店铺: <b id="statShop">-</b></span>
           <span class="stat-badge">记录: <b id="statCount">0</b></span>
           <button class="btn-batch-del" id="batchDelBtn" onclick="batchDelete()">🗑️ 批量删除</button>
+          <button class="btn-top" id="adminUsersBtn" onclick="showAdminUsers()" style="display:none">👥 账号管理</button>
           <button class="btn-top" id="changePwBtn" onclick="showChangePw()">🔑 改密</button>
           <button class="btn-top" id="logoutBtn" onclick="doLogout()">退出</button>
         </div>
@@ -400,6 +408,42 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
   </div>
 </div>
 
+<!-- 账号管理弹框（仅 admin） -->
+<div class="modal-mask" id="adminModal">
+  <div class="modal-box" style="width:560px;max-width:92vw">
+    <h3>👥 账号管理</h3>
+    <p class="pw-tip">密码为加密存储，任何人都无法查看明文；忘记密码请在此重置</p>
+    <div style="max-height:50vh;overflow:auto;margin:10px 0">
+      <table class="admin-table">
+        <thead>
+          <tr><th>用户名</th><th>注册时间</th><th>最后登录</th><th>记录数</th><th>操作</th></tr>
+        </thead>
+        <tbody id="adminUserList"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel-m" onclick="closeAdminUsers()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 重置密码弹框（管理员操作，无需旧密码） -->
+<div class="modal-mask" id="resetPwModal">
+  <div class="modal-box">
+    <h3>🔑 重置密码</h3>
+    <p id="resetPwTarget" style="color:#666;font-size:13px;margin-bottom:12px"></p>
+    <div class="form-group" style="text-align:left;margin-bottom:12px">
+      <label>新密码（至少4位）</label>
+      <input type="password" id="resetNewPw" placeholder="输入新密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitAdminReset()" />
+    </div>
+    <div class="login-err" id="resetPwErr"></div>
+    <div class="modal-actions">
+      <button class="btn-confirm" style="background:#1677ff" onclick="submitAdminReset()">确认重置</button>
+      <button class="btn-cancel-m" onclick="closeResetPw()">取消</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ========== 日期解析（只允许单个时间点：6.1 / 6-1 / 6/1 / 2026.6.1 / 2026-6-1） ==========
 function p2(s) { return String(s).length < 2 ? '0' + s : String(s); }
@@ -469,7 +513,12 @@ async function bootAuth() {
   if (token) {
     try {
       const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-      if (res.ok) { await enterApp(); return; }
+      if (res.ok) {
+        const me = await res.json();
+        currentUser = me.username || localStorage.getItem('yaoapp_user') || '';
+        await enterApp();
+        return;
+      }
     } catch (e) {}
   }
   const savedUser = localStorage.getItem('yaoapp_user');
@@ -479,6 +528,8 @@ async function bootAuth() {
 }
 
 async function enterApp() {
+  currentUser = currentUser || localStorage.getItem('yaoapp_user') || '';
+  refreshAdminBtn();
   showApp();
   await loadData();
   document.getElementById('shopSelect').value = currentShop;
@@ -908,6 +959,13 @@ function esc(s) {
 
 // ========== 登录 / 鉴权 ==========
 let authMode = 'login'; // login | register
+let currentUser = '';   // 当前登录用户名（admin 判定用）
+
+// admin 可见"账号管理"按钮
+function refreshAdminBtn() {
+  const el = document.getElementById('adminUsersBtn');
+  if (el) el.style.display = (currentUser === 'admin') ? '' : 'none';
+}
 
 function getStoredToken() {
   return localStorage.getItem('yaoapp_token') || sessionStorage.getItem('yaoapp_token');
@@ -968,6 +1026,7 @@ async function submitAuth() {
     return;
   }
   const j = await res.json();
+  currentUser = username;
   storeToken(j.token, remember, username);
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
@@ -980,8 +1039,71 @@ function doLogout() {
   localStorage.removeItem('yaoapp_token');
   localStorage.removeItem('yaoapp_user');
   sessionStorage.removeItem('yaoapp_token');
-  document.getElementById('loginUser').value = localStorage.getItem('yaoapp_user') || '';
+  currentUser = '';
+  refreshAdminBtn();
+  document.getElementById('loginUser').value = '';
   showLogin();
+}
+
+// ========== 账号管理（仅 admin） ==========
+async function showAdminUsers() {
+  document.getElementById('adminModal').classList.add('show');
+  const tbody = document.getElementById('adminUserList');
+  tbody.innerHTML = '<tr><td colspan="5" style="color:#999">加载中…</td></tr>';
+  try {
+    const res = await apiFetch('/api/admin/users');
+    const j = await res.json();
+    if (!res.ok) { showMsg('⚠️ ' + (j.error || '加载失败'), ''); closeAdminUsers(); return; }
+    const fmt = iso => {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
+    tbody.innerHTML = j.users.map(u => `
+      <tr>
+        <td>${u.username}${u.username === currentUser ? '<span class="me">(我)</span>' : ''}</td>
+        <td>${fmt(u.created_at)}</td>
+        <td>${fmt(u.last_login_at)}</td>
+        <td>${u.recordCount}</td>
+        <td><button class="btn-reset" onclick="showResetPw('${u.username}')">重置密码</button></td>
+      </tr>`).join('') || '<tr><td colspan="5" style="color:#999">暂无用户</td></tr>';
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#c00">加载失败，请重试</td></tr>';
+  }
+}
+function closeAdminUsers() { document.getElementById('adminModal').classList.remove('show'); }
+
+let resetTarget = '';
+function showResetPw(username) {
+  resetTarget = username;
+  document.getElementById('resetPwTarget').textContent = '目标账号：' + username + '（重置后该账号需用新密码重新登录）';
+  document.getElementById('resetNewPw').value = '';
+  document.getElementById('resetPwErr').textContent = '';
+  document.getElementById('resetPwModal').classList.add('show');
+}
+function closeResetPw() {
+  document.getElementById('resetPwModal').classList.remove('show');
+  resetTarget = '';
+}
+async function submitAdminReset() {
+  const pw = document.getElementById('resetNewPw').value;
+  if (!resetTarget) return;
+  if (pw.length < 4) { document.getElementById('resetPwErr').textContent = '新密码至少4位'; return; }
+  if (!confirm(`确定将 ${resetTarget} 的密码重置为新密码？`)) return;
+  const res = await apiFetch('/api/admin/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: resetTarget, newPassword: pw })
+  });
+  const j = await res.json().catch(() => ({}));
+  if (res.ok) {
+    document.getElementById('resetPwErr').textContent = '';
+    closeResetPw();
+    showMsg('✅ 密码已重置', `账号 ${resetTarget} 的新密码已生效，对方用新密码登录即可`);
+  } else {
+    document.getElementById('resetPwErr').textContent = j.error || '重置失败';
+  }
 }
 
 // 修改密码（登录后：必须验证旧密码）

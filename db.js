@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  last_login_at TEXT
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -30,6 +31,11 @@ CREATE TABLE IF NOT EXISTS records (
   data TEXT NOT NULL
 );
 `);
+// 老库兼容：users 表已存在时补 last_login_at 列
+const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (!userCols.includes('last_login_at')) {
+  db.exec('ALTER TABLE users ADD COLUMN last_login_at TEXT');
+}
 
 // ===== 密码哈希（crypto.scrypt，加盐，不存明文） =====
 function hashPassword(password, salt) {
@@ -100,6 +106,31 @@ function changePassword(userId, newPassword) {
   db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?').run(hash, salt, userId);
 }
 
+// ===== 管理员（admin） =====
+// 登录成功后记录最后登录时间
+function touchLogin(userId) {
+  db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?')
+    .run(new Date().toISOString(), userId);
+}
+
+// 重置密码后踢掉该用户全部会话，强制重新登录
+function deleteUserSessions(userId) {
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+}
+
+// 全部账号信息（不含任何密码相关字段，密码哈希永不外露）
+function listUsers() {
+  const rows = db.prepare(
+    'SELECT id, username, created_at, last_login_at FROM users ORDER BY id'
+  ).all();
+  return rows.map(u => {
+    const rec = getRecords(u.id);
+    let recordCount = 0;
+    for (const rs of Object.values(rec.records || {})) recordCount += rs.length;
+    return { id: u.id, username: u.username, created_at: u.created_at, last_login_at: u.last_login_at, recordCount };
+  });
+}
+
 // ===== 记录（每个用户一份 JSON） =====
 function getRecords(userId) {
   const row = db.prepare('SELECT data FROM records WHERE user_id = ?').get(userId);
@@ -142,5 +173,6 @@ function ensureSeeded() {
 module.exports = {
   db, createUser, verifyUser, verifyPasswordById, getUser, findUserByUsername,
   createSession, getSessionUser, deleteSession, changePassword,
-  getRecords, saveRecords, ensureSeeded
+  getRecords, saveRecords, ensureSeeded,
+  touchLogin, deleteUserSessions, listUsers
 };
