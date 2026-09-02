@@ -85,13 +85,23 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 200, { ok: true });
   }
 
-  // ========== 修改密码 ==========
+  // ========== 修改密码（必须验证旧密码；未登录时需提供账号，用于登录页改密） ==========
   if (pathname === '/api/change-password' && req.method === 'POST') {
-    const user = store.getSessionUser(getToken(req));
-    if (!user) return sendJSON(res, 401, { error: '未登录' });
     const body = await parseJSON(req);
-    if (!body || !body.password || body.password.length < 4) {
-      return sendJSON(res, 400, { error: '密码至少4位' });
+    if (!body || !body.oldPassword || !body.password) {
+      return sendJSON(res, 400, { error: '旧密码和新密码必填' });
+    }
+    if (body.password.length < 4) {
+      return sendJSON(res, 400, { error: '新密码至少4位' });
+    }
+    let user = store.getSessionUser(getToken(req));
+    if (!user) {
+      // 未登录（登录页改密）：校验账号 + 旧密码
+      if (!body.username) return sendJSON(res, 401, { error: '未登录，请提供账号' });
+      user = store.verifyUser(body.username, body.oldPassword);
+      if (!user) return sendJSON(res, 403, { error: '账号或旧密码不正确' });
+    } else if (!store.verifyPasswordById(user.id, body.oldPassword)) {
+      return sendJSON(res, 403, { error: '旧密码不正确' });
     }
     store.changePassword(user.id, body.password);
     return sendJSON(res, 200, { ok: true });

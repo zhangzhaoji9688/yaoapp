@@ -56,6 +56,12 @@ function verifyUser(username, password) {
   return { id: row.id, username: row.username };
 }
 
+function verifyPasswordById(userId, password) {
+  const row = db.prepare('SELECT password_hash, salt FROM users WHERE id = ?').get(userId);
+  if (!row) return false;
+  return hashPassword(password, row.salt) === row.password_hash;
+}
+
 function getUser(id) {
   return db.prepare('SELECT id, username, created_at FROM users WHERE id = ?').get(id) || null;
 }
@@ -134,7 +140,7 @@ function ensureSeeded() {
 }
 
 module.exports = {
-  db, createUser, verifyUser, getUser, findUserByUsername,
+  db, createUser, verifyUser, verifyPasswordById, getUser, findUserByUsername,
   createSession, getSessionUser, deleteSession, changePassword,
   getRecords, saveRecords, ensureSeeded
 };

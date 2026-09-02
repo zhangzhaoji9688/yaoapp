@@ -232,6 +232,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
   border-radius: 8px; font-size: 13px; cursor: pointer; transition: all .2s;
 }
 .btn-top:hover { border-color:#1677ff; color:#1677ff; }
+.pw-tip { font-size: 12px; color: #999; text-align: left; margin-bottom: 12px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -270,8 +271,8 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
     </div>
 
     <div class="form-group">
-      <label>日期（输入 6.1 或 2025.12.25）</label>
-      <input type="text" id="dateInput" placeholder="如 6.1 、 5.1-5.22" />
+      <label>日期（支持 6.1 / 6-1 / 6/1 / 2026.6.1，范围如 6.1-6.5）</label>
+      <input type="text" id="dateInput" placeholder="如 6.1 、 6/1 、 2026.6.1 、 6.1-6.5" />
     </div>
 
     <div class="form-group">
@@ -320,35 +321,76 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
   </div>
 </div>
 
-<!-- 登录浮层 -->
-<div class="modal-mask login-mask" id="loginMask">
-  <div class="login-box">
-    <h2 id="loginTitle">🔐 邀评系统登录</h2>
-    <div class="form-group">
-      <label>账号</label>
-      <input type="text" id="loginUser" placeholder="用户名" autocomplete="username" />
-    </div>
-    <div class="form-group">
-      <label>密码</label>
-      <input type="password" id="loginPass" placeholder="密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()" />
-    </div>
-    <label class="remember"><input type="checkbox" id="loginRemember" checked /> 记住我（自动登录）</label>
-    <div class="login-err" id="loginErr"></div>
-    <button class="btn-add" id="loginSubmit" onclick="submitAuth()">登录</button>
-    <div class="login-switch">
-      <span id="loginSwitchText">还没有账号？</span>
-      <a id="loginSwitchLink" onclick="toggleAuthMode()">注册新账号</a>
+<!-- 通用消息弹框（报错/提示） -->
+<div class="modal-mask" id="msgModal">
+  <div class="modal-box">
+    <h3 id="msgTitle">提示</h3>
+    <p id="msgText"></p>
+    <div class="modal-actions">
+      <button class="btn-confirm" style="background:#1677ff" onclick="closeMsg()">知道了</button>
     </div>
   </div>
 </div>
 
-<!-- 修改密码弹框 -->
+<!-- 登录浮层 -->
+<div class="modal-mask login-mask" id="loginMask">
+  <div class="login-box">
+    <!-- 登录 / 注册 -->
+    <div id="authView">
+      <h2 id="loginTitle">🔐 邀评系统登录</h2>
+      <div class="form-group">
+        <label>账号</label>
+        <input type="text" id="loginUser" placeholder="用户名" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input type="password" id="loginPass" placeholder="密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()" />
+      </div>
+      <label class="remember"><input type="checkbox" id="loginRemember" checked /> 记住我（自动登录）</label>
+      <div class="login-err" id="loginErr"></div>
+      <button class="btn-add" id="loginSubmit" onclick="submitAuth()">登录</button>
+      <div class="login-switch">
+        <span id="loginSwitchText">还没有账号？</span>
+        <a id="loginSwitchLink" onclick="toggleAuthMode()">注册新账号</a>
+        <span style="margin:0 6px">|</span>
+        <a onclick="showPwView()">修改密码</a>
+      </div>
+    </div>
+    <!-- 登录页修改密码（未登录：账号 + 旧密码验证） -->
+    <div id="pwView" style="display:none">
+      <h2>🔑 修改密码</h2>
+      <p class="pw-tip">忘记旧密码请联系管理员</p>
+      <div class="form-group">
+        <label>账号</label>
+        <input type="text" id="pwUser" placeholder="用户名" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>旧密码</label>
+        <input type="password" id="pwOld" placeholder="输入当前密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitPwView()" />
+      </div>
+      <div class="form-group">
+        <label>新密码（至少4位）</label>
+        <input type="password" id="pwNew" placeholder="输入新密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPwView()" />
+      </div>
+      <div class="login-err" id="pwViewErr"></div>
+      <button class="btn-add" onclick="submitPwView()">确认修改</button>
+      <div class="login-switch"><a onclick="backToAuth()">← 返回登录</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- 修改密码弹框（登录后） -->
 <div class="modal-mask" id="pwModal">
   <div class="modal-box">
     <h3>🔑 修改密码</h3>
+    <p class="pw-tip">忘记旧密码请联系管理员</p>
+    <div class="form-group" style="text-align:left;margin-bottom:12px">
+      <label>旧密码</label>
+      <input type="password" id="oldPwInput" placeholder="输入当前密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitChangePw()" />
+    </div>
     <div class="form-group" style="text-align:left;margin-bottom:12px">
       <label>新密码（至少4位）</label>
-      <input type="password" id="newPwInput" placeholder="输入新密码" />
+      <input type="password" id="newPwInput" placeholder="输入新密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitChangePw()" />
     </div>
     <div class="login-err" id="pwErr"></div>
     <div class="modal-actions">
@@ -359,20 +401,44 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
 </div>
 
 <script>
-// ========== 日期解析 ==========
-function p2(s) { return s.length < 2 ? '0' + s : s; }
+// ========== 日期解析（容错：6.1 / 6-1 / 6/1 / 2026.6.1 / 2026-6-1 / 范围 6.1-6.5） ==========
+function p2(s) { return String(s).length < 2 ? '0' + s : String(s); }
+
+// 构造 ISO 日期并校验合法性（2.30、13.5 等非法日期返回 null）
+function buildIso(y, mo, d) {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return `${y}-${p2(mo)}-${p2(d)}`;
+}
+
+// 无年份日期推断年份：取“最近一次已发生（不晚于今天）”的年份，与库内数据无关
+// 例：今天 2027-01-05 输入 1.5 → 2027；今天 2026-09-02 输入 12.25 → 2025
+function inferYear(mo, d) {
+  const now = new Date();
+  const cur = now.getFullYear();
+  const today = new Date(cur, now.getMonth(), now.getDate()).getTime();
+  if (new Date(cur, mo - 1, d).getTime() <= today) return cur;
+  return cur - 1;
+}
 
 function parseDateStr(text) {
   if (!text) return null;
-  text = text.trim();
-  let main = text.split(/[-~～]/)[0].trim();
-  let m = main.match(/^(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})$/);
-  if (m) return `${m[1]}-${p2(m[2])}-${p2(m[3])}`;
-  m = main.match(/^(\d{1,2})[.\-](\d{1,2})$/);
-  if (m) {
-    let mo = parseInt(m[1], 10);
-    let yr = (mo === 12 || (mo >= 1 && mo <= 6)) ? (mo === 12 ? 2025 : 2026) : 2026;
-    return `${yr}-${p2(m[1])}-${p2(m[2])}`;
+  const s = String(text).replace(/\s+/g, ''); // 去除全部空白（含内部空格）
+  if (!s) return null;
+  const main = s.split(/[~～]/)[0]; // 范围分隔 ~ ～，取首段作为排序日期
+  let m = main.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/); // 完整日期 2026.5.30 / 2026-5-30 / 2026/5/30
+  if (m) return buildIso(+m[1], +m[2], +m[3]);
+  m = main.match(/^(\d{1,2})[.\-/](\d{1,2})$/);                    // 短日期 5.30 / 5-30 / 5/30
+  if (m) return buildIso(inferYear(+m[1], +m[2]), +m[1], +m[2]);
+  // 范围（- 分隔，左侧是完整日期）：如 5.30-6.2、2026.5.30-6.2 —— 取左侧日期参与排序
+  const segs = main.split('-');
+  if (segs.length === 2) {
+    const l = segs[0];
+    m = l.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
+    if (m) return buildIso(+m[1], +m[2], +m[3]);
+    m = l.match(/^(\d{1,2})[.\-/](\d{1,2})$/);
+    if (m) return buildIso(inferYear(+m[1], +m[2]), +m[1], +m[2]);
   }
   return null;
 }
@@ -381,6 +447,32 @@ function isoToShort(iso) {
   if (!iso) return '';
   const p = iso.split('-');
   return parseInt(p[1], 10) + '.' + parseInt(p[2], 10);
+}
+
+// 规范化范围显示：5.1-5.22 → 5.1-5.22；2026.5.30-2026.6.2 → 5.30-6.2；非范围返回 null
+function normalizeRange(raw) {
+  const clean = String(raw || '').replace(/\s+/g, '');
+  if (!clean) return null;
+  const segs = clean.split(/[~～]/).flatMap(seg => {
+    if (/^\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}$/.test(seg) || /^\d{1,2}[.\-/]\d{1,2}$/.test(seg)) return [seg];
+    return seg.split('-');
+  });
+  if (segs.length <= 1) return null;
+  const norm = segs.map(seg => { const i = parseDateStr(seg); return i ? isoToShort(i) : seg; });
+  return norm.join('-');
+}
+
+// 记录日期显示：优先规范化后的短日期（2026.5.30 → 5.30），范围保留（5.1-5.22）
+function recordDateDisplay(r) {
+  const raw = r.dateRaw || '';
+  if (raw) {
+    const norm = normalizeRange(raw);
+    if (norm) return norm;
+    const i = parseDateStr(raw);
+    if (i) return isoToShort(i);
+    return raw;
+  }
+  return r.dateDisplay || r.date || '';
 }
 
 // ========== 状态 ==========
@@ -559,18 +651,30 @@ async function addRecord() {
   const orderId = document.getElementById('orderIdInput').value.trim();
   const dateStr  = document.getElementById('dateInput').value.trim();
   const reason  = document.getElementById('reasonInput').value.trim();
-  if (!currentSKU)  { alert('请先选择或新增一个SKU'); return; }
-  if (!orderId)     { alert('请输入订单号'); return; }
-  if (!dateStr)      { alert('请输入日期'); return; }
-  if (!reason)       { alert('请输入退货原因'); return; }
+  if (!currentSKU)  { showMsg('提示', '请先选择或新增一个SKU'); return; }
+  if (!orderId)     { showMsg('提示', '请输入订单号'); return; }
+  if (!dateStr)      { showMsg('提示', '请输入日期'); return; }
+  if (!reason)       { showMsg('提示', '请输入退货原因'); return; }
+
+  // 订单号唯一性校验（亚马逊订单号全局唯一，去全部空格后比对）
+  const dup = findOrderId(orderId);
+  if (dup) {
+    showMsg('⚠️ 订单号重复', `订单号 ${orderId} 已存在（${dup.shop} 店铺 · ${recordDateDisplay(dup.rec)}），无法重复录入`);
+    return;
+  }
 
   const iso = parseDateStr(dateStr);
+  if (!iso) {
+    showMsg('⚠️ 日期格式有误', `无法识别日期「${dateStr}」，请使用如 6.1、6-1、6/1、2026.6.1 或范围 6.1-6.5`);
+    return;
+  }
+
   const rec = {
     id: Date.now() + Math.random(),
     orderId,
     dateRaw: dateStr,
-    dateISO: iso || '9999-12-31',
-    dateDisplay: iso ? isoToShort(iso) : dateStr,
+    dateISO: iso,
+    dateDisplay: isoToShort(iso),
     reason,
     shop: currentShop,
     sku: currentSKU
@@ -582,6 +686,18 @@ async function addRecord() {
   document.getElementById('reasonInput').value = '';
   await tick();
   renderList();
+}
+
+// 全局查找订单号（去全部空格后比对），返回 {shop, rec} 或 null
+function findOrderId(orderId) {
+  const key = String(orderId || '').replace(/\s+/g, '');
+  if (!key) return null;
+  for (const shop of Object.keys(data.records)) {
+    for (const r of data.records[shop]) {
+      if (String(r.orderId || '').replace(/\s+/g, '') === key) return { shop, rec: r };
+    }
+  }
+  return null;
 }
 
 // ========== 渲染列表 ==========
@@ -649,7 +765,7 @@ function renderList() {
           </td>
         </tr>`;
       } else {
-        const displayDate = r.dateRaw || r.dateDisplay || r.date || '';
+        const displayDate = recordDateDisplay(r);
         html += `<tr>
           <td class="checkbox-cell"><input type="checkbox" class="cb" data-id="${r.id}" data-shop="${esc(r.shop)}"></td>
           <td title="${esc(r.orderId)}">${esc(r.orderId)}</td>
@@ -681,19 +797,33 @@ async function saveEdit(id) {
   const oid    = document.getElementById('e_oid_'+id).value.trim();
   const dateT  = document.getElementById('e_date_'+id).value.trim();
   const reason = document.getElementById('e_reason_'+id).value.trim();
-  if (!oid || !dateT || !reason) { alert('请填写完整'); return; }
-  const iso = parseDateStr(dateT);
+  if (!oid || !dateT || !reason) { showMsg('提示', '请填写完整'); return; }
+
+  // 找到原记录
+  let orig = null, origShop = null, origIdx = -1;
   for (const s of Object.keys(data.records)) {
     const idx = data.records[s].findIndex(r => r.id === id);
-    if (idx !== -1) {
-      data.records[s][idx].orderId     = oid;
-      data.records[s][idx].dateRaw     = dateT;
-      data.records[s][idx].dateISO     = iso || '9999-12-31';
-      data.records[s][idx].dateDisplay = iso ? isoToShort(iso) : dateT;
-      data.records[s][idx].reason      = reason;
-      break;
+    if (idx !== -1) { orig = data.records[s][idx]; origShop = s; origIdx = idx; break; }
+  }
+  if (!orig) { showMsg('提示', '未找到该记录，可能已被删除'); return; }
+
+  // 订单号变更时才做唯一性校验（排除自身）
+  if (String(orig.orderId || '').replace(/\s+/g, '') !== String(oid).replace(/\s+/g, '')) {
+    const dup = findOrderId(oid);
+    if (dup) {
+      showMsg('⚠️ 订单号重复', `订单号 ${oid} 已被 ${dup.shop} 店铺的 ${recordDateDisplay(dup.rec)} 记录占用`);
+      return;
     }
   }
+
+  const iso = parseDateStr(dateT);
+  if (!iso) { showMsg('⚠️ 日期格式有误', `无法识别日期「${dateT}」，请使用如 6.1、6-1、6/1、2026.6.1 或范围 6.1-6.5`); return; }
+
+  data.records[origShop][origIdx].orderId     = oid;
+  data.records[origShop][origIdx].dateRaw     = dateT;
+  data.records[origShop][origIdx].dateISO     = iso;
+  data.records[origShop][origIdx].dateDisplay = isoToShort(iso);
+  data.records[origShop][origIdx].reason      = reason;
   await saveData();
   editingId = null;
   await tick();
@@ -709,6 +839,16 @@ function showDelModal(id, shop) {
 function closeDelModal() {
   document.getElementById('delModal').classList.remove('show');
   delTarget = null;
+}
+
+// ========== 通用消息弹框 ==========
+function showMsg(title, text) {
+  document.getElementById('msgTitle').textContent = title;
+  document.getElementById('msgText').textContent = text;
+  document.getElementById('msgModal').classList.add('show');
+}
+function closeMsg() {
+  document.getElementById('msgModal').classList.remove('show');
 }
 async function confirmDelete() {
   if (!delTarget) return;
@@ -781,7 +921,11 @@ function storeToken(token, remember, username) {
     sessionStorage.setItem('yaoapp_token', token);
   }
 }
-function showLogin() { document.getElementById('loginMask').classList.add('show'); }
+function showLogin() {
+  document.getElementById('authView').style.display = 'block';
+  document.getElementById('pwView').style.display = 'none';
+  document.getElementById('loginMask').classList.add('show');
+}
 function showApp() {
   document.getElementById('loginMask').classList.remove('show');
   document.getElementById('loginErr').textContent = '';
@@ -841,20 +985,61 @@ function doLogout() {
   showLogin();
 }
 
-// 修改密码
+// 修改密码（登录后：必须验证旧密码）
 function showChangePw() {
+  document.getElementById('oldPwInput').value = '';
   document.getElementById('newPwInput').value = '';
   document.getElementById('pwErr').textContent = '';
   document.getElementById('pwModal').classList.add('show');
 }
 function closePw() { document.getElementById('pwModal').classList.remove('show'); }
 async function submitChangePw() {
+  const oldPassword = document.getElementById('oldPwInput').value;
   const pw = document.getElementById('newPwInput').value;
+  if (!oldPassword) { document.getElementById('pwErr').textContent = '请输入旧密码'; return; }
+  if (pw.length < 4) { document.getElementById('pwErr').textContent = '新密码至少4位'; return; }
   const res = await apiFetch('/api/change-password', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldPassword, password: pw })
   });
-  if (res.ok) { alert('密码已修改'); closePw(); }
+  if (res.ok) { showMsg('✅ 修改成功', '密码已修改，请牢记新密码'); closePw(); }
   else { const j = await res.json().catch(() => ({})); document.getElementById('pwErr').textContent = j.error || '失败'; }
+}
+
+// 登录页修改密码（未登录：账号 + 旧密码验证，不做手机验证码）
+function showPwView() {
+  document.getElementById('pwUser').value = document.getElementById('loginUser').value || '';
+  document.getElementById('pwOld').value = '';
+  document.getElementById('pwNew').value = '';
+  document.getElementById('pwViewErr').textContent = '';
+  document.getElementById('authView').style.display = 'none';
+  document.getElementById('pwView').style.display = 'block';
+}
+function backToAuth() {
+  document.getElementById('authView').style.display = 'block';
+  document.getElementById('pwView').style.display = 'none';
+  setLoginErr('');
+}
+async function submitPwView() {
+  const username   = document.getElementById('pwUser').value.trim();
+  const oldPassword = document.getElementById('pwOld').value;
+  const password   = document.getElementById('pwNew').value;
+  const errEl = document.getElementById('pwViewErr');
+  if (!username || !oldPassword || !password) { errEl.textContent = '请填写完整'; return; }
+  if (password.length < 4) { errEl.textContent = '新密码至少4位'; return; }
+  const res = await fetch('/api/change-password', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, oldPassword, password })
+  });
+  if (res.ok) {
+    showMsg('✅ 修改成功', '密码已修改，请用新密码登录');
+    document.getElementById('pwUser').value = '';
+    document.getElementById('pwOld').value = '';
+    document.getElementById('pwNew').value = '';
+    backToAuth();
+  } else {
+    const j = await res.json().catch(() => ({}));
+    errEl.textContent = j.error || '操作失败';
+  }
 }
 
 document.addEventListener('change', e => { if(e.target.classList.contains('cb')) updateBatchBtn(); });
