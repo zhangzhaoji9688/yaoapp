@@ -5,11 +5,14 @@ const path = require('path');
 const store = require('./db');
 
 const PORT = 3000;
+const MAX_BODY = 1024 * 1024; // 请求体上限 1MB
 
-function corsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+// 同源应用，不加 CORS 跨域头；统一补安全响应头
+function securityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'");
 }
 
 const mime = {
@@ -21,8 +24,12 @@ const mime = {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => resolve(body));
+    let tooLarge = false;
+    req.on('data', c => {
+      body += c;
+      if (body.length > MAX_BODY) { tooLarge = true; req.destroy(); }
+    });
+    req.on('end', () => tooLarge ? reject(new Error('body too large')) : resolve(body));
     req.on('error', reject);
   });
 }
@@ -43,34 +50,55 @@ async function parseJSON(req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  corsHeaders(res);
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  securityHeaders(res);
 
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
 
-  // ========== 注册（开放自助注册） ==========
+  // ========== 注册（已关闭：账号由管理员创建） ==========
   if (pathname === '/api/register' && req.method === 'POST') {
+    return sendJSON(res, 403, { error: '系统不开放注册，请联系管理员创建账号' });
+  }
+
+  // ========== 登录（连续失败 5 次锁定 15 分钟） ==========
+  if (pathname === '/api/login' && req.method === 'POST') {
     const body = await parseJSON(req);
-    if (!body || !body.username || !body.password || body.password.length < 4) {
-      return sendJSON(res, 400, { error: '用户名和密码（至少4位）必填' });
+    if (!body || !body.username || !body.password) {
+      return sendJSON(res, 400, { error: '账号和密码必填' });
+    }
+    const lock = store.isUserLocked(body.username);
+    if (lock.locked) {
+      const mins = Math.max(1, Math.ceil(lock.remainingMs / 60000));
+      return sendJSON(res, 429, { error: `失败次数过多，账号已锁定，请 ${mins} 分钟后再试` });
+    }
+    const user = store.verifyUser(body.username, body.password);
+    if (!user) {
+      const fr = store.recordLoginFail(body.username);
+      if (fr.locked) {
+        return sendJSON(res, 429, { error: '失败次数过多，账号已锁定 15 分钟' });
+      }
+      return sendJSON(res, 401, { error: `账号或密码错误（连续失败 ${5 - fr.failCount} 次后将锁定）` });
+    }
+    store.clearLoginFail(user.id);
+    store.touchLogin(user.id);
+    const token = store.createSession(user.id);
+    return sendJSON(res, 200, { ok: true, token, username: user.username });
+  }
+
+  // ========== 管理员：创建账号（仅 admin，替代开放注册） ==========
+  if (pathname === '/api/admin/create-user' && req.method === 'POST') {
+    const user = store.getSessionUser(getToken(req));
+    if (!user) return sendJSON(res, 401, { error: '未登录' });
+    if (user.username !== 'admin') return sendJSON(res, 403, { error: '无权限' });
+    const body = await parseJSON(req);
+    if (!body || !body.username || !body.password || body.password.length < 6) {
+      return sendJSON(res, 400, { error: '用户名和新密码（至少6位）必填' });
     }
     if (store.findUserByUsername(body.username)) {
       return sendJSON(res, 409, { error: '用户名已存在' });
     }
-    const uid = store.createUser(body.username, body.password);
-    const token = store.createSession(uid);
-    return sendJSON(res, 200, { ok: true, token, username: body.username });
-  }
-
-  // ========== 登录 ==========
-  if (pathname === '/api/login' && req.method === 'POST') {
-    const body = await parseJSON(req);
-    const user = body && store.verifyUser(body.username, body.password);
-    if (!user) return sendJSON(res, 401, { error: '账号或密码错误' });
-    store.touchLogin(user.id);
-    const token = store.createSession(user.id);
-    return sendJSON(res, 200, { ok: true, token, username: user.username });
+    store.createUser(body.username, body.password);
+    return sendJSON(res, 200, { ok: true, username: body.username });
   }
 
   // ========== 管理员：全部账号信息（仅 admin） ==========
@@ -87,8 +115,8 @@ const server = http.createServer(async (req, res) => {
     if (!user) return sendJSON(res, 401, { error: '未登录' });
     if (user.username !== 'admin') return sendJSON(res, 403, { error: '无权限' });
     const body = await parseJSON(req);
-    if (!body || !body.username || !body.newPassword || body.newPassword.length < 4) {
-      return sendJSON(res, 400, { error: '用户名和新密码（至少4位）必填' });
+    if (!body || !body.username || !body.newPassword || body.newPassword.length < 6) {
+      return sendJSON(res, 400, { error: '用户名和新密码（至少6位）必填' });
     }
     const target = store.findUserByUsername(body.username);
     if (!target) return sendJSON(res, 404, { error: '用户不存在' });
@@ -116,15 +144,27 @@ const server = http.createServer(async (req, res) => {
     if (!body || !body.oldPassword || !body.password) {
       return sendJSON(res, 400, { error: '旧密码和新密码必填' });
     }
-    if (body.password.length < 4) {
-      return sendJSON(res, 400, { error: '新密码至少4位' });
+    if (body.password.length < 6) {
+      return sendJSON(res, 400, { error: '新密码至少6位' });
     }
     let user = store.getSessionUser(getToken(req));
     if (!user) {
-      // 未登录（登录页改密）：校验账号 + 旧密码
+      // 未登录（登录页改密）：校验账号 + 旧密码（同样防暴力试探）
       if (!body.username) return sendJSON(res, 401, { error: '未登录，请提供账号' });
+      const lock = store.isUserLocked(body.username);
+      if (lock.locked) {
+        const mins = Math.max(1, Math.ceil(lock.remainingMs / 60000));
+        return sendJSON(res, 429, { error: `失败次数过多，请 ${mins} 分钟后再试` });
+      }
       user = store.verifyUser(body.username, body.oldPassword);
-      if (!user) return sendJSON(res, 403, { error: '账号或旧密码不正确' });
+      if (!user) {
+        const fr = store.recordLoginFail(body.username);
+        if (fr.locked) {
+          return sendJSON(res, 429, { error: '失败次数过多，账号已锁定 15 分钟' });
+        }
+        return sendJSON(res, 403, { error: `账号或旧密码不正确（连续失败 ${5 - fr.failCount} 次后将锁定）` });
+      }
+      store.clearLoginFail(user.id);
     } else if (!store.verifyPasswordById(user.id, body.oldPassword)) {
       return sendJSON(res, 403, { error: '旧密码不正确' });
     }

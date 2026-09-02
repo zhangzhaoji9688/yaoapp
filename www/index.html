@@ -240,6 +240,9 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
 .admin-table .btn-reset { border:1px solid #e6a23c; color:#e6a23c; background:#fff; border-radius:4px; padding:2px 10px; cursor:pointer; font-size:12px; }
 .admin-table .btn-reset:hover { background:#e6a23c; color:#fff; }
 .admin-table .me { color:#1677ff; font-size:11px; margin-left:4px; }
+.create-user-box { border-top:1px solid #eee; padding-top:10px; margin-top:4px; }
+.create-user-title { font-size:13px; color:#666; margin-bottom:8px; }
+.create-user-box input { border:1px solid #d9d9d9; border-radius:4px; padding:6px 8px; font-size:13px; }
 </style>
 </head>
 <body>
@@ -358,8 +361,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
       <div class="login-err" id="loginErr"></div>
       <button class="btn-add" id="loginSubmit" onclick="submitAuth()">登录</button>
       <div class="login-switch">
-        <span id="loginSwitchText">还没有账号？</span>
-        <a id="loginSwitchLink" onclick="toggleAuthMode()">注册新账号</a>
+        <span id="loginSwitchText">账号由管理员开通</span>
         <span style="margin:0 6px">|</span>
         <a onclick="showPwView()">修改密码</a>
       </div>
@@ -377,7 +379,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
         <input type="password" id="pwOld" name="secret_key2" placeholder="输入当前密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPwView()" />
       </div>
       <div class="form-group">
-        <label>新密码（至少4位）</label>
+        <label>新密码（至少6位）</label>
         <input type="password" id="pwNew" placeholder="输入新密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitPwView()" />
       </div>
       <div class="login-err" id="pwViewErr"></div>
@@ -397,7 +399,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
       <input type="password" id="oldPwInput" name="secret_key3" placeholder="输入当前密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitChangePw()" />
     </div>
     <div class="form-group" style="text-align:left;margin-bottom:12px">
-      <label>新密码（至少4位）</label>
+      <label>新密码（至少6位）</label>
       <input type="password" id="newPwInput" placeholder="输入新密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitChangePw()" />
     </div>
     <div class="login-err" id="pwErr"></div>
@@ -421,6 +423,15 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
         <tbody id="adminUserList"></tbody>
       </table>
     </div>
+    <div class="create-user-box">
+      <div class="create-user-title">创建新账号（系统不开放自助注册）</div>
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        <input type="text" id="newUserName" placeholder="用户名" style="flex:1" autocomplete="off" spellcheck="false" />
+        <input type="text" id="newUserPw" placeholder="初始密码（至少6位）" style="flex:1" autocomplete="off" />
+      </div>
+      <div class="login-err" id="createUserErr"></div>
+      <button class="btn-add" onclick="submitCreateUser()" style="width:100%">创建账号</button>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel-m" onclick="closeAdminUsers()">关闭</button>
     </div>
@@ -433,7 +444,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
     <h3>🔑 重置密码</h3>
     <p id="resetPwTarget" style="color:#666;font-size:13px;margin-bottom:12px"></p>
     <div class="form-group" style="text-align:left;margin-bottom:12px">
-      <label>新密码（至少4位）</label>
+      <label>新密码（至少6位）</label>
       <input type="password" id="resetNewPw" placeholder="输入新密码" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitAdminReset()" />
     </div>
     <div class="login-err" id="resetPwErr"></div>
@@ -635,10 +646,10 @@ function buildSkuButtons() {
   if (skus.length === 0) {
     html = '<span style="color:#bbb;font-size:13px">暂无SKU</span>';
   } else {
-    html = skus.map(s => {
+    html = skus.map((s, i) => {
       const cnt = countMap[s] || 0;
       const cntStr = cnt > 0 ? `<small style="opacity:.6;margin-left:3px">(${cnt})</small>` : '';
-      return `<span class="sku-btn${s===currentSKU?' active':''}" onclick="pickSKU('${esc(s)}')">${esc(s)}${cntStr}</span>`;
+      return `<span class="sku-btn${s===currentSKU?' active':''}" onclick="pickSKUByIdx(${i})">${esc(s)}${cntStr}</span>`;
     }).join('');
   }
   // 追加"+ 新增 SKU"按钮
@@ -651,6 +662,13 @@ function pickSKU(sku) {
   buildSkuButtons();
   const el = document.getElementById('sku-' + sku);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// 通过索引选中 SKU（避免把用户输入拼进 onclick 字符串）
+function pickSKUByIdx(i) {
+  const skus = getAllSkusForShop(currentShop);
+  const sku = skus[i];
+  if (sku !== undefined) pickSKU(sku);
 }
 
 // ========== 新增 SKU ==========
@@ -787,7 +805,7 @@ function renderList() {
 
   let html = '';
   Object.keys(groups).forEach(sku => {
-    html += `<div class="sku-section" id="sku-${sku}">
+    html += `<div class="sku-section" id="sku-${esc(sku)}">
       <div class="sku-section-header">
         <span>📦 ${esc(sku)}</span>
         <span style="font-weight:400;font-size:12px;color:#999">${groups[sku].length} 条</span>
@@ -823,7 +841,7 @@ function renderList() {
           <td title="${esc(r.reason)}">${esc(r.reason)}</td>
           <td class="action-cell">
             <button class="btn-sm btn-edit" onclick="startEdit(${r.id})">✏️</button>
-            <button class="btn-sm btn-del" onclick="showDelModal(${r.id},'${esc(r.shop)}')">🗑️</button>
+            <button class="btn-sm btn-del" onclick="showDelModal(${r.id})">🗑️</button>
           </td>
         </tr>`;
       }
@@ -881,8 +899,8 @@ async function saveEdit(id) {
 }
 
 // ========== 删除 ==========
-function showDelModal(id, shop) {
-  delTarget = {id, shop};
+function showDelModal(id) {
+  delTarget = {id, shop: null};
   document.getElementById('delMsg').textContent = '确定要删除这条记录吗？';
   document.getElementById('delModal').classList.add('show');
 }
@@ -954,11 +972,10 @@ async function saveData() {
 // ========== 工具 ==========
 function esc(s) {
   if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ========== 登录 / 鉴权 ==========
-let authMode = 'login'; // login | register
 let currentUser = '';   // 当前登录用户名（admin 判定用）
 
 // admin 可见"账号管理"按钮
@@ -998,23 +1015,13 @@ async function apiFetch(url, options = {}) {
   return res;
 }
 
-function toggleAuthMode() {
-  authMode = (authMode === 'login') ? 'register' : 'login';
-  const reg = authMode === 'register';
-  document.getElementById('loginTitle').textContent = reg ? '📝 注册新账号' : '🔐 邀评系统登录';
-  document.getElementById('loginSubmit').textContent = reg ? '注册' : '登录';
-  document.getElementById('loginSwitchText').textContent = reg ? '已有账号？' : '还没有账号？';
-  document.getElementById('loginSwitchLink').textContent = reg ? '去登录' : '注册新账号';
-  setLoginErr('');
-}
-
-async function submitAuth() {
+function submitAuth() {
   const username = document.getElementById('loginUser').value.trim();
   const password = document.getElementById('loginPass').value;
   const remember = document.getElementById('loginRemember').checked;
   if (!username || !password) { setLoginErr('请输入账号和密码'); return; }
 
-  const url = authMode === 'register' ? '/api/register' : '/api/login';
+  const url = '/api/login';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1062,11 +1069,11 @@ async function showAdminUsers() {
     };
     tbody.innerHTML = j.users.map(u => `
       <tr>
-        <td>${u.username}${u.username === currentUser ? '<span class="me">(我)</span>' : ''}</td>
+        <td>${esc(u.username)}${u.username === currentUser ? '<span class="me">(我)</span>' : ''}</td>
         <td>${fmt(u.created_at)}</td>
         <td>${fmt(u.last_login_at)}</td>
         <td>${u.recordCount}</td>
-        <td><button class="btn-reset" onclick="showResetPw('${u.username}')">重置密码</button></td>
+        <td><button class="btn-reset" data-u="${esc(u.username)}" onclick="showResetPw(this)">重置密码</button></td>
       </tr>`).join('') || '<tr><td colspan="5" style="color:#999">暂无用户</td></tr>';
   } catch (e) {
     tbody.innerHTML = '<tr><td colspan="5" style="color:#c00">加载失败，请重试</td></tr>';
@@ -1074,10 +1081,34 @@ async function showAdminUsers() {
 }
 function closeAdminUsers() { document.getElementById('adminModal').classList.remove('show'); }
 
+// ========== 创建账号（仅 admin，替代开放注册） ==========
+async function submitCreateUser() {
+  const errEl = document.getElementById('createUserErr');
+  const name = document.getElementById('newUserName').value.trim();
+  const pw = document.getElementById('newUserPw').value;
+  errEl.textContent = '';
+  if (!name || !pw) { errEl.textContent = '请填写用户名和初始密码'; return; }
+  if (pw.length < 6) { errEl.textContent = '初始密码至少6位'; return; }
+  const res = await apiFetch('/api/admin/create-user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: name, password: pw })
+  });
+  const j = await res.json().catch(() => ({}));
+  if (res.ok) {
+    showMsg('✅ 账号已创建', `账号 ${name} 已创建，请把初始密码告知对方，并提醒其登录后尽快修改`);
+    document.getElementById('newUserName').value = '';
+    document.getElementById('newUserPw').value = '';
+    showAdminUsers();
+  } else {
+    errEl.textContent = j.error || '创建失败';
+  }
+}
+
 let resetTarget = '';
-function showResetPw(username) {
-  resetTarget = username;
-  document.getElementById('resetPwTarget').textContent = '目标账号：' + username + '（重置后该账号需用新密码重新登录）';
+function showResetPw(btn) {
+  resetTarget = btn.dataset.u || '';
+  document.getElementById('resetPwTarget').textContent = '目标账号：' + resetTarget + '（重置后该账号需用新密码重新登录）';
   document.getElementById('resetNewPw').value = '';
   document.getElementById('resetPwErr').textContent = '';
   document.getElementById('resetPwModal').classList.add('show');
@@ -1089,7 +1120,7 @@ function closeResetPw() {
 async function submitAdminReset() {
   const pw = document.getElementById('resetNewPw').value;
   if (!resetTarget) return;
-  if (pw.length < 4) { document.getElementById('resetPwErr').textContent = '新密码至少4位'; return; }
+  if (pw.length < 6) { document.getElementById('resetPwErr').textContent = '新密码至少6位'; return; }
   if (!confirm(`确定将 ${resetTarget} 的密码重置为新密码？`)) return;
   const res = await apiFetch('/api/admin/reset-password', {
     method: 'POST',
@@ -1118,7 +1149,7 @@ async function submitChangePw() {
   const oldPassword = document.getElementById('oldPwInput').value;
   const pw = document.getElementById('newPwInput').value;
   if (!oldPassword) { document.getElementById('pwErr').textContent = '请输入旧密码'; return; }
-  if (pw.length < 4) { document.getElementById('pwErr').textContent = '新密码至少4位'; return; }
+  if (pw.length < 6) { document.getElementById('pwErr').textContent = '新密码至少6位'; return; }
   const res = await apiFetch('/api/change-password', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldPassword, password: pw })
   });
@@ -1146,7 +1177,7 @@ async function submitPwView() {
   const password   = document.getElementById('pwNew').value;
   const errEl = document.getElementById('pwViewErr');
   if (!username || !oldPassword || !password) { errEl.textContent = '请填写完整'; return; }
-  if (password.length < 4) { errEl.textContent = '新密码至少4位'; return; }
+  if (password.length < 6) { errEl.textContent = '新密码至少6位'; return; }
   const res = await fetch('/api/change-password', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, oldPassword, password })

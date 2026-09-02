@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  last_login_at TEXT
+  last_login_at TEXT,
+  login_fail_count INTEGER DEFAULT 0,
+  locked_until TEXT
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -35,6 +37,12 @@ CREATE TABLE IF NOT EXISTS records (
 const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
 if (!userCols.includes('last_login_at')) {
   db.exec('ALTER TABLE users ADD COLUMN last_login_at TEXT');
+}
+if (!userCols.includes('login_fail_count')) {
+  db.exec('ALTER TABLE users ADD COLUMN login_fail_count INTEGER DEFAULT 0');
+}
+if (!userCols.includes('locked_until')) {
+  db.exec('ALTER TABLE users ADD COLUMN locked_until TEXT');
 }
 
 // ===== 密码哈希（crypto.scrypt，加盐，不存明文） =====
@@ -106,6 +114,46 @@ function changePassword(userId, newPassword) {
   db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?').run(hash, salt, userId);
 }
 
+// ===== 登录失败锁定（防暴力破解） =====
+const MAX_LOGIN_FAILS = 5;        // 连续失败次数
+const LOCK_MS = 15 * 60 * 1000;   // 锁定 15 分钟
+
+function getLoginFail(username) {
+  const row = db.prepare(
+    'SELECT id, login_fail_count, locked_until FROM users WHERE username = ?'
+  ).get(username);
+  if (!row) return null;
+  return { id: row.id, failCount: row.login_fail_count || 0, lockedUntil: row.locked_until };
+}
+
+// 记录一次登录失败；达到阈值返回 { locked: true }（触发 15 分钟锁定）
+function recordLoginFail(username) {
+  const info = getLoginFail(username);
+  if (!info) return { locked: false, failCount: 0 };
+  const fails = info.failCount + 1;
+  if (fails >= MAX_LOGIN_FAILS) {
+    db.prepare('UPDATE users SET login_fail_count = 0, locked_until = ? WHERE id = ?')
+      .run(new Date(Date.now() + LOCK_MS).toISOString(), info.id);
+    return { locked: true, failCount: fails };
+  }
+  db.prepare('UPDATE users SET login_fail_count = ? WHERE id = ?').run(fails, info.id);
+  return { locked: false, failCount: fails };
+}
+
+function clearLoginFail(userId) {
+  db.prepare('UPDATE users SET login_fail_count = 0, locked_until = NULL WHERE id = ?').run(userId);
+}
+
+// 是否处于锁定中；锁已过期则自动清零
+function isUserLocked(username) {
+  const info = getLoginFail(username);
+  if (!info || !info.lockedUntil) return { locked: false };
+  const until = new Date(info.lockedUntil).getTime();
+  if (until > Date.now()) return { locked: true, remainingMs: until - Date.now() };
+  db.prepare('UPDATE users SET login_fail_count = 0, locked_until = NULL WHERE id = ?').run(info.id);
+  return { locked: false };
+}
+
 // ===== 管理员（admin） =====
 // 登录成功后记录最后登录时间
 function touchLogin(userId) {
@@ -174,5 +222,6 @@ module.exports = {
   db, createUser, verifyUser, verifyPasswordById, getUser, findUserByUsername,
   createSession, getSessionUser, deleteSession, changePassword,
   getRecords, saveRecords, ensureSeeded,
-  touchLogin, deleteUserSessions, listUsers
+  touchLogin, deleteUserSessions, listUsers,
+  getLoginFail, recordLoginFail, clearLoginFail, isUserLocked
 };
