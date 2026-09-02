@@ -271,8 +271,8 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
     </div>
 
     <div class="form-group">
-      <label>日期（支持 6.1 / 6-1 / 6/1 / 2026.6.1，范围如 6.1-6.5）</label>
-      <input type="text" id="dateInput" placeholder="如 6.1 、 6/1 、 2026.6.1 、 6.1-6.5" />
+      <label>日期（单个日期：6.1 / 6-1 / 6/1 / 2026.6.1）</label>
+      <input type="text" id="dateInput" placeholder="如 6.1 、 6/1 、 2026.6.1" />
     </div>
 
     <div class="form-group">
@@ -401,7 +401,7 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
 </div>
 
 <script>
-// ========== 日期解析（容错：6.1 / 6-1 / 6/1 / 2026.6.1 / 2026-6-1 / 范围 6.1-6.5） ==========
+// ========== 日期解析（只允许单个时间点：6.1 / 6-1 / 6/1 / 2026.6.1 / 2026-6-1） ==========
 function p2(s) { return String(s).length < 2 ? '0' + s : String(s); }
 
 // 构造 ISO 日期并校验合法性（2.30、13.5 等非法日期返回 null）
@@ -422,25 +422,17 @@ function inferYear(mo, d) {
   return cur - 1;
 }
 
+// 只接受单个日期。含 ~ ～ 或“日期-日期”的范围输入一律返回 null（不再支持时间段写法）
 function parseDateStr(text) {
   if (!text) return null;
   const s = String(text).replace(/\s+/g, ''); // 去除全部空白（含内部空格）
   if (!s) return null;
-  const main = s.split(/[~～]/)[0]; // 范围分隔 ~ ～，取首段作为排序日期
-  let m = main.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/); // 完整日期 2026.5.30 / 2026-5-30 / 2026/5/30
+  if (/[~～]/.test(s)) return null;              // 范围符号直接拒绝
+  let m = s.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/); // 完整日期 2026.5.30 / 2026-5-30 / 2026/5/30
   if (m) return buildIso(+m[1], +m[2], +m[3]);
-  m = main.match(/^(\d{1,2})[.\-/](\d{1,2})$/);                    // 短日期 5.30 / 5-30 / 5/30
+  m = s.match(/^(\d{1,2})[.\-/](\d{1,2})$/);                    // 短日期 5.30 / 5-30 / 5/30
   if (m) return buildIso(inferYear(+m[1], +m[2]), +m[1], +m[2]);
-  // 范围（- 分隔，左侧是完整日期）：如 5.30-6.2、2026.5.30-6.2 —— 取左侧日期参与排序
-  const segs = main.split('-');
-  if (segs.length === 2) {
-    const l = segs[0];
-    m = l.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
-    if (m) return buildIso(+m[1], +m[2], +m[3]);
-    m = l.match(/^(\d{1,2})[.\-/](\d{1,2})$/);
-    if (m) return buildIso(inferYear(+m[1], +m[2]), +m[1], +m[2]);
-  }
-  return null;
+  return null; // 含多个分隔符（如 6.1-6.5、2026.5.30-2026.6.2）或其他非法格式
 }
 
 function isoToShort(iso) {
@@ -449,25 +441,10 @@ function isoToShort(iso) {
   return parseInt(p[1], 10) + '.' + parseInt(p[2], 10);
 }
 
-// 规范化范围显示：5.1-5.22 → 5.1-5.22；2026.5.30-2026.6.2 → 5.30-6.2；非范围返回 null
-function normalizeRange(raw) {
-  const clean = String(raw || '').replace(/\s+/g, '');
-  if (!clean) return null;
-  const segs = clean.split(/[~～]/).flatMap(seg => {
-    if (/^\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}$/.test(seg) || /^\d{1,2}[.\-/]\d{1,2}$/.test(seg)) return [seg];
-    return seg.split('-');
-  });
-  if (segs.length <= 1) return null;
-  const norm = segs.map(seg => { const i = parseDateStr(seg); return i ? isoToShort(i) : seg; });
-  return norm.join('-');
-}
-
-// 记录日期显示：优先规范化后的短日期（2026.5.30 → 5.30），范围保留（5.1-5.22）
+// 记录日期显示：规范化单点日期（2026.5.30 → 5.30）；历史范围数据无法解析时原样显示
 function recordDateDisplay(r) {
   const raw = r.dateRaw || '';
   if (raw) {
-    const norm = normalizeRange(raw);
-    if (norm) return norm;
     const i = parseDateStr(raw);
     if (i) return isoToShort(i);
     return raw;
@@ -665,7 +642,7 @@ async function addRecord() {
 
   const iso = parseDateStr(dateStr);
   if (!iso) {
-    showMsg('⚠️ 日期格式有误', `无法识别日期「${dateStr}」，请使用如 6.1、6-1、6/1、2026.6.1 或范围 6.1-6.5`);
+    showMsg('⚠️ 日期格式有误', `无法识别日期「${dateStr}」，只支持单个日期，请使用如 6.1、6-1、6/1、2026.6.1（时间段写法已停用）`);
     return;
   }
 
@@ -817,7 +794,7 @@ async function saveEdit(id) {
   }
 
   const iso = parseDateStr(dateT);
-  if (!iso) { showMsg('⚠️ 日期格式有误', `无法识别日期「${dateT}」，请使用如 6.1、6-1、6/1、2026.6.1 或范围 6.1-6.5`); return; }
+  if (!iso) { showMsg('⚠️ 日期格式有误', `无法识别日期「${dateT}」，只支持单个日期，请使用如 6.1、6-1、6/1、2026.6.1（时间段写法已停用）`); return; }
 
   data.records[origShop][origIdx].orderId     = oid;
   data.records[origShop][origIdx].dateRaw     = dateT;
