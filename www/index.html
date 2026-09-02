@@ -361,7 +361,8 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
       <div class="login-err" id="loginErr"></div>
       <button class="btn-add" id="loginSubmit" onclick="submitAuth()">登录</button>
       <div class="login-switch">
-        <span id="loginSwitchText">账号由管理员开通</span>
+        <span id="loginSwitchText">还没有账号？</span>
+        <a id="loginSwitchLink" onclick="toggleAuthMode()">注册新账号</a>
         <span style="margin:0 6px">|</span>
         <a onclick="showPwView()">修改密码</a>
       </div>
@@ -976,6 +977,7 @@ function esc(s) {
 }
 
 // ========== 登录 / 鉴权 ==========
+let authMode = 'login'; // login | register
 let currentUser = '';   // 当前登录用户名（admin 判定用）
 
 // admin 可见"账号管理"按钮
@@ -1015,13 +1017,24 @@ async function apiFetch(url, options = {}) {
   return res;
 }
 
-function submitAuth() {
+function toggleAuthMode() {
+  authMode = (authMode === 'login') ? 'register' : 'login';
+  const reg = authMode === 'register';
+  document.getElementById('loginTitle').textContent = reg ? '📝 注册新账号' : '🔐 邀评系统登录';
+  document.getElementById('loginSubmit').textContent = reg ? '注册' : '登录';
+  document.getElementById('loginSwitchText').textContent = reg ? '已有账号？' : '还没有账号？';
+  document.getElementById('loginSwitchLink').textContent = reg ? '去登录' : '注册新账号';
+  setLoginErr('');
+}
+
+async function submitAuth() {
   const username = document.getElementById('loginUser').value.trim();
   const password = document.getElementById('loginPass').value;
   const remember = document.getElementById('loginRemember').checked;
   if (!username || !password) { setLoginErr('请输入账号和密码'); return; }
+  if (authMode === 'register' && password.length < 6) { setLoginErr('密码至少6位'); return; }
 
-  const url = '/api/login';
+  const url = authMode === 'register' ? '/api/register' : '/api/login';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

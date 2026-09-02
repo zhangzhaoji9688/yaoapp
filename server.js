@@ -55,9 +55,18 @@ const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
 
-  // ========== 注册（已关闭：账号由管理员创建） ==========
+  // ========== 注册（开放注册：注册即登录） ==========
   if (pathname === '/api/register' && req.method === 'POST') {
-    return sendJSON(res, 403, { error: '系统不开放注册，请联系管理员创建账号' });
+    const body = await parseJSON(req);
+    if (!body || !body.username || !body.password || body.password.length < 6) {
+      return sendJSON(res, 400, { error: '用户名和密码（至少6位）必填' });
+    }
+    if (store.findUserByUsername(body.username)) {
+      return sendJSON(res, 409, { error: '用户名已存在' });
+    }
+    const uid = store.createUser(body.username, body.password);
+    const token = store.createSession(uid);
+    return sendJSON(res, 200, { ok: true, token, username: body.username });
   }
 
   // ========== 登录（连续失败 5 次锁定 15 分钟） ==========
