@@ -25,12 +25,16 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
     let tooLarge = false;
+    let settled = false;
+    const done = (fn, v) => { if (!settled) { settled = true; fn(v); } };
     req.on('data', c => {
       body += c;
       if (body.length > MAX_BODY) { tooLarge = true; req.destroy(); }
     });
-    req.on('end', () => tooLarge ? reject(new Error('body too large')) : resolve(body));
-    req.on('error', reject);
+    req.on('end', () => tooLarge ? done(reject, new Error('body too large')) : done(resolve, body));
+    req.on('error', err => done(reject, err));
+    req.on('aborted', () => done(reject, new Error('request aborted')));
+    req.on('close', () => done(reject, new Error('connection closed')));
   });
 }
 
@@ -49,7 +53,15 @@ async function parseJSON(req) {
   catch (e) { return null; }
 }
 
-const server = http.createServer(async (req, res) => {
+// ===== 全局兜底：任何未捕获异常都记入日志，不让进程无声退出 =====
+process.on('uncaughtException', err => {
+  console.error(new Date().toISOString(), '[uncaughtException]', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', reason => {
+  console.error(new Date().toISOString(), '[unhandledRejection]', reason && reason.stack ? reason.stack : reason);
+});
+
+async function handleRequest(req, res) {
   securityHeaders(res);
 
   const parsed = url.parse(req.url, true);
@@ -218,6 +230,18 @@ const server = http.createServer(async (req, res) => {
     } else {
       res.writeHead(200, { 'Content-Type': contentType });
       res.end(data);
+    }
+  });
+}
+
+// 请求处理统一加错误隔离：单个请求出错返回 500，不再让整个进程崩溃
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch(err => {
+    console.error(new Date().toISOString(), '[请求处理异常]', err && err.stack ? err.stack : err);
+    if (!res.headersSent) {
+      try { sendJSON(res, 500, { error: '服务器内部错误，请稍后重试' }); } catch (e) {}
+    } else {
+      try { res.end(); } catch (e) {}
     }
   });
 });
