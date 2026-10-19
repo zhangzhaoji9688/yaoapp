@@ -633,6 +633,7 @@ function buildSkuButtons() {
   const records = data.records[currentShop] || [];
   const countMap = {};
   records.forEach(r => {
+    if (r.deleted === 1) return;
     const sku = r.sku || currentShop;
     countMap[sku] = (countMap[sku] || 0) + 1;
   });
@@ -763,6 +764,7 @@ function findOrderId(orderId) {
   if (!key) return null;
   for (const shop of Object.keys(data.records)) {
     for (const r of data.records[shop]) {
+      if (r.deleted === 1) continue;
       if (String(r.orderId || '').replace(/\s+/g, '') === key) return { shop, rec: r };
     }
   }
@@ -772,7 +774,7 @@ function findOrderId(orderId) {
 // ========== 渲染列表 ==========
 function renderList() {
   const container = document.getElementById('listContainer');
-  let records = data.records[currentShop] || [];
+  let records = (data.records[currentShop] || []).filter(r => r.deleted !== 1);
   document.getElementById('statShop').textContent  = currentShop;
   document.getElementById('statCount').textContent = records.length;
 
@@ -922,14 +924,15 @@ function closeMsg() {
 async function confirmDelete() {
   if (!delTarget) return;
   const {id} = delTarget;
-  // 全局按 id 定位删除（不依赖 shop 字段，避免脏数据导致删不掉）
-  let removed = 0;
+  // 软删除：全局按 id 定位（不依赖 shop 字段），只把 deleted 标记为 1，数据保留在库中
+  const now = new Date().toISOString();
+  let hit = 0;
   for (const s of Object.keys(data.records)) {
-    const before = data.records[s].length;
-    data.records[s] = data.records[s].filter(r => r.id !== id);
-    removed += before - data.records[s].length;
+    for (const r of data.records[s]) {
+      if (r.id === id && r.deleted !== 1) { r.deleted = 1; r.deletedAt = now; hit++; }
+    }
   }
-  if (removed === 0) { alert('未找到该记录，可能已被删除'); closeDelModal(); return; }
+  if (hit === 0) { alert('未找到该记录，可能已被删除'); closeDelModal(); return; }
   await saveData();
   await tick();
   renderList();
@@ -952,9 +955,12 @@ async function batchDelete() {
   if (!cbs.length) return;
   if (!confirm(`确定删除选中的 ${cbs.length} 条记录？`)) return;
   const ids = new Set([...cbs].map(cb => parseFloat(cb.dataset.id)));
-  // 全局按 id 定位删除（不依赖 shop 字段）
+  // 软删除：全局按 id 定位（不依赖 shop 字段），只打标记不删数据
+  const now = new Date().toISOString();
   for (const s of Object.keys(data.records)) {
-    data.records[s] = data.records[s].filter(r => !ids.has(r.id));
+    for (const r of data.records[s]) {
+      if (ids.has(r.id) && r.deleted !== 1) { r.deleted = 1; r.deletedAt = now; }
+    }
   }
   await saveData();
   await tick();
