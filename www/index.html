@@ -229,7 +229,8 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
   background: #52c41a; box-shadow: 0 0 0 4px rgba(82,196,26,.14);
   color: #fff;
 }
-.toast-box.is-err .toast-icon { background: #ff4d4f; box-shadow: 0 0 0 4px rgba(255,77,79,.14); }
+.toast-box.is-err .toast-icon,
+.toast-box.is-del .toast-icon { background: #ff4d4f; box-shadow: 0 0 0 4px rgba(255,77,79,.14); }
 .toast-icon svg { display: block; }
 .toast-text { font-size: 15px; font-weight: 600; color: #1a1a1a; line-height: 1.2; white-space: nowrap; }
 
@@ -953,19 +954,28 @@ function closeMsg() {
 }
 
 // ========== 轻提示：画面中间弹出，2.2 秒自动消失，无需点关闭 ==========
+// type: ok=绿色对勾 | del=红色垃圾桶 | err=红色叉
+const TOAST_ICONS = {
+  ok:  { sw: 3.4, px: 16, path: '<path d="M4 12.5l5.2 5.2L20 6.8"/>' },
+  del: { sw: 2, px: 18,
+         path: '<path d="M5 7h14"/>' +
+               '<path d="M9.6 7V5.3A1.3 1.3 0 0 1 10.9 4h2.2a1.3 1.3 0 0 1 1.3 1.3V7"/>' +
+               '<path d="M7.3 7l.75 11a1.9 1.9 0 0 0 1.9 1.8h4.1a1.9 1.9 0 0 0 1.9-1.8L16.7 7"/>' +
+               '<path d="M10.6 10.9v5.2"/><path d="M13.4 10.9v5.2"/>' },
+  err: { sw: 3.4, px: 16, path: '<path d="M6 6l12 12M18 6L6 18"/>' }
+};
 let toastTimer = null;
 function showToast(text, type) {
   const layer = document.getElementById('toastLayer');
   if (!layer) return;
-  const icon = type === 'err'
-    ? '<path d="M6 6l12 12M18 6L6 18"/>'
-    : '<path d="M4 12.5l5.2 5.2L20 6.8"/>';
-  layer.innerHTML = '<div class="toast-box' + (type === 'err' ? ' is-err' : '') + '">' +
+  const t = TOAST_ICONS[type] ? type : 'ok';
+  const ic = TOAST_ICONS[t];
+  layer.innerHTML = '<div class="toast-box' + (t === 'ok' ? '' : ' is-' + t) + '">' +
       '<span class="toast-icon">' +
-        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
-        'stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">' + icon + '</svg>' +
+        '<svg viewBox="0 0 24 24" width="' + ic.px + '" height="' + ic.px + '" fill="none" stroke="currentColor" ' +
+        'stroke-width="' + ic.sw + '" stroke-linecap="round" stroke-linejoin="round">' + ic.path + '</svg>' +
       '</span>' +
-      '<span class="toast-text">' + esc(text || '添加成功') + '</span>' +
+      '<span class="toast-text">' + esc(text || '操作成功') + '</span>' +
     '</div>';
   const box = layer.firstElementChild;
   // 双 rAF 确保初始样式先落地，再触发进场过渡
@@ -990,10 +1000,12 @@ async function confirmDelete() {
     }
   }
   if (hit === 0) { alert('未找到该记录，可能已被删除'); closeDelModal(); return; }
-  await saveData();
+  const res = await saveData();
+  const ok = !!(res && res.ok);
   await tick();
   renderList();
   closeDelModal();
+  if (ok) showToast('已删除 ' + hit + ' 条记录', 'del');
 }
 
 // ========== 批量 ==========
@@ -1014,14 +1026,17 @@ async function batchDelete() {
   const ids = new Set([...cbs].map(cb => parseFloat(cb.dataset.id)));
   // 软删除：全局按 id 定位（不依赖 shop 字段），只打标记不删数据
   const now = new Date().toISOString();
+  let hit = 0;
   for (const s of Object.keys(data.records)) {
     for (const r of data.records[s]) {
-      if (ids.has(r.id) && r.deleted !== 1) { r.deleted = 1; r.deletedAt = now; }
+      if (ids.has(r.id) && r.deleted !== 1) { r.deleted = 1; r.deletedAt = now; hit++; }
     }
   }
-  await saveData();
+  const res = await saveData();
+  const ok = !!(res && res.ok);
   await tick();
   renderList();
+  if (ok && hit > 0) showToast('已删除 ' + hit + ' 条记录', 'del');
 }
 
 // ========== 保存 ==========
