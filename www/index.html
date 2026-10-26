@@ -209,6 +209,30 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
 .modal-actions .btn-cancel-m { background: #f0f0f0; color: #333; }
 .modal-actions button:hover { opacity: .82; }
 
+/* ===== 轻提示 Toast（画面中间、自动消失、不遮挡点击） ===== */
+.toast-layer {
+  position: fixed; inset: 0; display: flex; justify-content: center; align-items: center;
+  pointer-events: none; z-index: 20000;
+}
+.toast-box {
+  display: flex; align-items: center; gap: 11px;
+  background: #fff; border-radius: 12px; padding: 16px 26px 16px 22px;
+  box-shadow: 0 10px 34px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.06);
+  opacity: 0; transform: scale(.9) translateY(8px);
+  transition: opacity .18s ease, transform .18s cubic-bezier(.2,.9,.3,1.25);
+}
+.toast-box.show { opacity: 1; transform: scale(1) translateY(0); }
+.toast-box.hide { opacity: 0; transform: scale(.96) translateY(-6px); transition-duration: .22s; }
+.toast-icon {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  display: flex; justify-content: center; align-items: center;
+  background: #52c41a; box-shadow: 0 0 0 4px rgba(82,196,26,.14);
+  color: #fff;
+}
+.toast-box.is-err .toast-icon { background: #ff4d4f; box-shadow: 0 0 0 4px rgba(255,77,79,.14); }
+.toast-icon svg { display: block; }
+.toast-text { font-size: 15px; font-weight: 600; color: #1a1a1a; line-height: 1.2; white-space: nowrap; }
+
 /* ===== 登录浮层 ===== */
 .login-mask { z-index: 100000; background: linear-gradient(135deg,#e6f4ff,#f0f2f5); }
 .login-box {
@@ -455,6 +479,9 @@ body { font-family: 'Microsoft YaHei', Arial, sans-serif; background: #f0f2f5; h
     </div>
   </div>
 </div>
+
+<!-- 轻提示容器（添加成功等，自动消失） -->
+<div class="toast-layer" id="toastLayer" aria-live="polite"></div>
 
 <script>
 // ========== 日期解析（只允许单个时间点：6.1 / 6-1 / 6/1 / 2026.6.1 / 2026-6-1） ==========
@@ -750,12 +777,15 @@ async function addRecord() {
     sku: currentSKU
   };
   data.records[currentShop].push(rec);
-  await saveData();
+  const res = await saveData();
+  // 仅在服务端确实保存成功时给轻提示；失败保持原有表现（不弹成功）
+  const ok = !!(res && res.ok);
   document.getElementById('orderIdInput').value = '';
   document.getElementById('dateInput').value = '';
   document.getElementById('reasonInput').value = '';
   await tick();
   renderList();
+  if (ok) showToast('添加成功');
 }
 
 // 全局查找订单号（去全部空格后比对），返回 {shop, rec} 或 null
@@ -921,6 +951,33 @@ function showMsg(title, text) {
 function closeMsg() {
   document.getElementById('msgModal').classList.remove('show');
 }
+
+// ========== 轻提示：画面中间弹出，2.2 秒自动消失，无需点关闭 ==========
+let toastTimer = null;
+function showToast(text, type) {
+  const layer = document.getElementById('toastLayer');
+  if (!layer) return;
+  const icon = type === 'err'
+    ? '<path d="M6 6l12 12M18 6L6 18"/>'
+    : '<path d="M4 12.5l5.2 5.2L20 6.8"/>';
+  layer.innerHTML = '<div class="toast-box' + (type === 'err' ? ' is-err' : '') + '">' +
+      '<span class="toast-icon">' +
+        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+        'stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">' + icon + '</svg>' +
+      '</span>' +
+      '<span class="toast-text">' + esc(text || '添加成功') + '</span>' +
+    '</div>';
+  const box = layer.firstElementChild;
+  // 双 rAF 确保初始样式先落地，再触发进场过渡
+  requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('show')));
+
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    box.classList.remove('show');
+    box.classList.add('hide');
+    setTimeout(() => { if (box.parentNode) box.parentNode.removeChild(box); }, 240);
+  }, 2200);
+}
 async function confirmDelete() {
   if (!delTarget) return;
   const {id} = delTarget;
@@ -969,7 +1026,7 @@ async function batchDelete() {
 
 // ========== 保存 ==========
 async function saveData() {
-  await apiFetch('/api/data', {
+  return await apiFetch('/api/data', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
